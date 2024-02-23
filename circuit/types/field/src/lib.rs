@@ -47,7 +47,7 @@ pub struct Field<E: Environment> {
     linear_combination: LinearCombination<E::BaseField>,
     /// An optional secondary representation in little-endian bits is provided,
     /// so that calls to `ToBits` only incur constraint costs once.
-    bits_le: OnceCell<Vec<Boolean<E>>>,
+    pub bits_le: OnceCell<Vec<Boolean<E>>>,
 }
 
 impl<E: Environment> FieldTrait for Field<E> {}
