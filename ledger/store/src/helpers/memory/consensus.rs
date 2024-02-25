@@ -20,8 +20,6 @@ use crate::{
 };
 use console::prelude::*;
 
-use aleo_std_storage::StorageMode;
-
 /// An in-memory consensus storage.
 #[derive(Clone)]
 pub struct ConsensusMemory<N: Network> {
@@ -39,11 +37,11 @@ impl<N: Network> ConsensusStorage<N> for ConsensusMemory<N> {
     type TransitionStorage = TransitionMemory<N>;
 
     /// Initializes the consensus storage.
-    fn open<S: Clone + Into<StorageMode>>(storage: S) -> Result<Self> {
+    fn open(dev: Option<u16>) -> Result<Self> {
         // Initialize the finalize store.
-        let finalize_store = FinalizeStore::<N, FinalizeMemory<N>>::open(storage.clone())?;
+        let finalize_store = FinalizeStore::<N, FinalizeMemory<N>>::open(dev)?;
         // Initialize the block store.
-        let block_store = BlockStore::<N, BlockMemory<N>>::open(storage)?;
+        let block_store = BlockStore::<N, BlockMemory<N>>::open(dev)?;
         // Return the consensus storage.
         Ok(Self {
             finalize_store,

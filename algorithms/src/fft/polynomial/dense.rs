@@ -14,12 +14,10 @@
 
 //! A polynomial represented in coefficient form.
 
-use super::PolyMultiplier;
 use crate::fft::{EvaluationDomain, Evaluations, Polynomial};
 use snarkvm_fields::{Field, PrimeField};
 use snarkvm_utilities::{cfg_iter_mut, serialize::*};
 
-use anyhow::Result;
 use num_traits::CheckedDiv;
 use rand::Rng;
 use std::{
@@ -27,10 +25,13 @@ use std::{
     ops::{Add, AddAssign, Deref, DerefMut, Div, Mul, MulAssign, Neg, Sub, SubAssign},
 };
 
+#[cfg(feature = "serial")]
 use itertools::Itertools;
 
 #[cfg(not(feature = "serial"))]
 use rayon::prelude::*;
+
+use super::PolyMultiplier;
 
 /// Stores a polynomial in coefficient form.
 #[derive(Clone, PartialEq, Eq, Hash, Default, CanonicalSerialize, CanonicalDeserialize)]
@@ -74,10 +75,10 @@ impl<F: Field> DensePolynomial<F> {
     /// Constructs a new polynomial from a list of coefficients.
     pub fn from_coefficients_vec(mut coeffs: Vec<F>) -> Self {
         // While there are zeros at the end of the coefficient vector, pop them off.
-        while let Some(true) = coeffs.last().map(|c| c.is_zero()) {
+        while coeffs.last().map_or(false, |c| c.is_zero()) {
             coeffs.pop();
         }
-        // Check that either the coefficients vec are empty or that the last coeff is non-zero.
+        // Check that either the coefficients vec is empty or that the last coeff is non-zero.
         assert!(coeffs.last().map_or(true, |coeff| !coeff.is_zero()));
 
         Self { coeffs }
@@ -100,8 +101,7 @@ impl<F: Field> DensePolynomial<F> {
         } else if point.is_zero() {
             return self.coeffs[0];
         }
-        let mut powers_of_point = Vec::with_capacity(1 + self.degree());
-        powers_of_point.push(F::one());
+        let mut powers_of_point = vec![F::one()];
         let mut cur = point;
         for _ in 0..self.degree() {
             powers_of_point.push(cur);
@@ -112,16 +112,10 @@ impl<F: Field> DensePolynomial<F> {
         crate::cfg_reduce!(mapping, || zero, |a, b| a + b)
     }
 
-    /// Outputs a univariate polynomial of degree `d` where each non-leading
-    /// coefficient is sampled uniformly at random from R and the leading
-    /// coefficient is sampled uniformly at random from among the non-zero
-    /// elements of R.
+    /// Outputs a polynomial of degree `d` where each coefficient is sampled uniformly at random
+    /// from the field `F`.
     pub fn rand<R: Rng>(d: usize, rng: &mut R) -> Self {
-        let mut random_coeffs = (0..(d + 1)).map(|_| F::rand(rng)).collect_vec();
-        while random_coeffs[d].is_zero() {
-            // In the extremely unlikely event, sample again.
-            random_coeffs[d] = F::rand(rng);
-        }
+        let random_coeffs = (0..(d + 1)).map(|_| F::rand(rng)).collect();
         Self::from_coefficients_vec(random_coeffs)
     }
 
@@ -161,7 +155,7 @@ impl<F: PrimeField> DensePolynomial<F> {
     pub fn divide_by_vanishing_poly(
         &self,
         domain: EvaluationDomain<F>,
-    ) -> Result<(DensePolynomial<F>, DensePolynomial<F>)> {
+    ) -> Option<(DensePolynomial<F>, DensePolynomial<F>)> {
         let self_poly = Polynomial::from(self);
         let vanishing_poly = Polynomial::from(domain.vanishing_polynomial());
         self_poly.divide_with_q_and_r(&vanishing_poly)
@@ -194,7 +188,7 @@ impl<'a, 'b, F: Field> Add<&'a DensePolynomial<F>> for &'b DensePolynomial<F> {
     type Output = DensePolynomial<F>;
 
     fn add(self, other: &'a DensePolynomial<F>) -> DensePolynomial<F> {
-        let mut result = if self.is_zero() {
+        if self.is_zero() {
             other.clone()
         } else if other.is_zero() {
             self.clone()
@@ -207,13 +201,12 @@ impl<'a, 'b, F: Field> Add<&'a DensePolynomial<F>> for &'b DensePolynomial<F> {
             let mut result = other.clone();
             // Zip safety: `result` and `other` could have different lengths.
             cfg_iter_mut!(result.coeffs).zip(&self.coeffs).for_each(|(a, b)| *a += b);
+            // If the leading coefficient ends up being zero, pop it off.
+            while let Some(true) = self.coeffs.last().map(|c| c.is_zero()) {
+                result.coeffs.pop();
+            }
             result
-        };
-        // If the leading coefficient ends up being zero, pop it off.
-        while let Some(true) = result.coeffs.last().map(|c| c.is_zero()) {
-            result.coeffs.pop();
         }
-        result
     }
 }
 
@@ -279,10 +272,10 @@ impl<'a, F: Field> AddAssign<(F, &'a DensePolynomial<F>)> for DensePolynomial<F>
             cfg_iter_mut!(self.coeffs).zip(&other.coeffs).for_each(|(a, b)| {
                 *a += f * b;
             });
-        }
-        // If the leading coefficient ends up being zero, pop it off.
-        while let Some(true) = self.coeffs.last().map(|c| c.is_zero()) {
-            self.coeffs.pop();
+            // If the leading coefficient ends up being zero, pop it off.
+            while let Some(true) = self.coeffs.last().map(|c| c.is_zero()) {
+                self.coeffs.pop();
+            }
         }
     }
 }
@@ -304,7 +297,7 @@ impl<'a, 'b, F: Field> Sub<&'a DensePolynomial<F>> for &'b DensePolynomial<F> {
 
     #[inline]
     fn sub(self, other: &'a DensePolynomial<F>) -> DensePolynomial<F> {
-        let mut result = if self.is_zero() {
+        if self.is_zero() {
             let mut result = other.clone();
             for coeff in &mut result.coeffs {
                 *coeff = -(*coeff);
@@ -324,13 +317,15 @@ impl<'a, 'b, F: Field> Sub<&'a DensePolynomial<F>> for &'b DensePolynomial<F> {
             cfg_iter_mut!(result.coeffs).zip(&other.coeffs).for_each(|(a, b)| {
                 *a -= b;
             });
+            if !result.is_zero() {
+                // If the leading coefficient ends up being zero, pop it off.
+                while result.coeffs.last().map(|c| c.is_zero()) == Some(true) {
+                    result.coeffs.pop();
+                }
+            }
+
             result
-        };
-        // If the leading coefficient ends up being zero, pop it off.
-        while let Some(true) = result.coeffs.last().map(|c| c.is_zero()) {
-            result.coeffs.pop();
         }
-        result
     }
 }
 
@@ -352,10 +347,10 @@ impl<'a, F: Field> SubAssign<&'a DensePolynomial<F>> for DensePolynomial<F> {
             self.coeffs.resize(other.coeffs.len(), F::zero());
             // Zip safety: self and other have the same length after the resize.
             cfg_iter_mut!(self.coeffs).zip(&other.coeffs).for_each(|(a, b)| *a -= b);
-        }
-        // If the leading coefficient ends up being zero, pop it off.
-        while let Some(true) = self.coeffs.last().map(|c| c.is_zero()) {
-            self.coeffs.pop();
+            // If the leading coefficient ends up being zero, pop it off.
+            while let Some(true) = self.coeffs.last().map(|c| c.is_zero()) {
+                self.coeffs.pop();
+            }
         }
     }
 }
@@ -424,15 +419,11 @@ impl<F: Field> CheckedDiv for DensePolynomial<F> {
     fn checked_div(&self, divisor: &DensePolynomial<F>) -> Option<DensePolynomial<F>> {
         let a: Polynomial<_> = self.into();
         let b: Polynomial<_> = divisor.into();
-        match a.divide_with_q_and_r(&b) {
-            Ok((divisor, remainder)) => {
-                if remainder.is_zero() {
-                    Some(divisor)
-                } else {
-                    None
-                }
-            }
-            Err(_) => None,
+        let res = a.divide_with_q_and_r(&b);
+        if let Some((divisor, remainder)) = res {
+            if remainder.is_zero() { Some(divisor) } else { None }
+        } else {
+            None
         }
     }
 }
@@ -596,9 +587,11 @@ mod tests {
             for b_degree in 0..70 {
                 let dividend = DensePolynomial::<Fr>::rand(a_degree, rng);
                 let divisor = DensePolynomial::<Fr>::rand(b_degree, rng);
-                let (quotient, remainder) =
-                    Polynomial::divide_with_q_and_r(&(&dividend).into(), &(&divisor).into()).unwrap();
-                assert_eq!(dividend, &(&divisor * &quotient) + &remainder)
+                if let Some((quotient, remainder)) =
+                    Polynomial::divide_with_q_and_r(&(&dividend).into(), &(&divisor).into())
+                {
+                    assert_eq!(dividend, &(&divisor * &quotient) + &remainder)
+                }
             }
         }
     }
@@ -615,13 +608,6 @@ mod tests {
             }
             assert_eq!(p.evaluate(point), total);
         }
-    }
-
-    #[test]
-    fn divide_poly_by_zero() {
-        let a = Polynomial::<Fr>::zero();
-        let b = Polynomial::<Fr>::zero();
-        assert!(a.divide_with_q_and_r(&b).is_err());
     }
 
     #[test]
@@ -700,7 +686,7 @@ mod tests {
         multiplier.add_polynomial(a.clone(), "a");
         assert_eq!(multiplier.multiply().unwrap(), a);
 
-        // Note PolyMultiplier doesn't support evaluations with no polynomials
+        // Note PolyMultiplier doesn't support a evluations with no polynomials
     }
 
     #[test]

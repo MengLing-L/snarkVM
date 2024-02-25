@@ -1,15 +1,13 @@
 /*
 cases:
-  - program: unused_position.aleo
-    function: foo
+  - function: foo
     inputs: []
 */
 
 program unused_position.aleo;
 
 function foo:
-    async foo into r0;
-    output r0 as unused_position.aleo/foo.future;
+    finalize;
 
 finalize foo:
     position end;

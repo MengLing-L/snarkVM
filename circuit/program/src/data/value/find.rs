@@ -29,7 +29,6 @@ impl<A: Aleo> Value<A> {
                     Entry::Private(plaintext) => Ok(Self::Plaintext(plaintext)),
                 }
             }
-            Self::Future(future) => Ok(future.find(path)?),
         }
     }
 }

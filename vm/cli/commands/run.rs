@@ -106,16 +106,12 @@ mod tests {
 
     #[test]
     fn clap_snarkvm_run() {
-        let arg_vec = vec!["snarkvm", "run", "hello", "1u32", "2u32", "foo.aleo"];
+        let arg_vec = vec!["snarkvm", "run", "hello", "1u32", "2u32"];
         let cli = CLI::parse_from(&arg_vec);
 
         if let Command::Run(run) = cli.command {
             assert_eq!(run.function, Identifier::try_from(arg_vec[2]).unwrap());
-            assert_eq!(run.inputs, vec![
-                Value::try_from(arg_vec[3]).unwrap(),
-                Value::try_from(arg_vec[4]).unwrap(),
-                Value::try_from(arg_vec[5]).unwrap()
-            ]);
+            assert_eq!(run.inputs, vec![Value::try_from(arg_vec[3]).unwrap(), Value::try_from(arg_vec[4]).unwrap()]);
         } else {
             panic!("Unexpected result of clap parsing!");
         }

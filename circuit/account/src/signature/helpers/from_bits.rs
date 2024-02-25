@@ -22,25 +22,13 @@ impl<A: Aleo> FromBits for Signature<A> {
     fn from_bits_le(bits_le: &[Self::Boolean]) -> Self {
         let scalar_size_in_bits = console::Scalar::<A::Network>::size_in_bits();
         let compute_key_size_in_bits = console::ComputeKey::<A::Network>::size_in_bits();
-
         let (challenge_start, challenge_end) = (0, scalar_size_in_bits);
         let (response_start, response_end) = (challenge_end, challenge_end + scalar_size_in_bits);
         let (compute_key_start, compute_key_end) = (response_end, response_end + compute_key_size_in_bits);
-
-        let Some(challenge_bits) = bits_le.get(challenge_start..challenge_end) else {
-            A::halt("Unable to recover the signature challenge from (LE) bits")
-        };
-        let Some(response_bits) = bits_le.get(response_start..response_end) else {
-            A::halt("Unable to recover the signature response from (LE) bits")
-        };
-        let Some(compute_key_bits) = bits_le.get(compute_key_start..compute_key_end) else {
-            A::halt("Unable to recover the signature compute key from (LE) bits")
-        };
-
         Self {
-            challenge: Scalar::from_bits_le(challenge_bits),
-            response: Scalar::from_bits_le(response_bits),
-            compute_key: ComputeKey::from_bits_le(compute_key_bits),
+            challenge: Scalar::from_bits_le(&bits_le[challenge_start..challenge_end]),
+            response: Scalar::from_bits_le(&bits_le[response_start..response_end]),
+            compute_key: ComputeKey::from_bits_le(&bits_le[compute_key_start..compute_key_end]),
         }
     }
 
@@ -48,25 +36,13 @@ impl<A: Aleo> FromBits for Signature<A> {
     fn from_bits_be(bits_be: &[Self::Boolean]) -> Self {
         let scalar_size_in_bits = console::Scalar::<A::Network>::size_in_bits();
         let compute_key_size_in_bits = console::ComputeKey::<A::Network>::size_in_bits();
-
         let (challenge_start, challenge_end) = (0, scalar_size_in_bits);
         let (response_start, response_end) = (challenge_end, challenge_end + scalar_size_in_bits);
         let (compute_key_start, compute_key_end) = (response_end, response_end + compute_key_size_in_bits);
-
-        let Some(challenge_bits) = bits_be.get(challenge_start..challenge_end) else {
-            A::halt("Unable to recover the signature challenge from (BE) bits")
-        };
-        let Some(response_bits) = bits_be.get(response_start..response_end) else {
-            A::halt("Unable to recover the signature response from (BE) bits")
-        };
-        let Some(compute_key_bits) = bits_be.get(compute_key_start..compute_key_end) else {
-            A::halt("Unable to recover the signature compute key from (BE) bits")
-        };
-
         Self {
-            challenge: Scalar::from_bits_be(challenge_bits),
-            response: Scalar::from_bits_be(response_bits),
-            compute_key: ComputeKey::from_bits_be(compute_key_bits),
+            challenge: Scalar::from_bits_be(&bits_be[challenge_start..challenge_end]),
+            response: Scalar::from_bits_be(&bits_be[response_start..response_end]),
+            compute_key: ComputeKey::from_bits_be(&bits_be[compute_key_start..compute_key_end]),
         }
     }
 }
@@ -118,31 +94,31 @@ mod tests {
 
     #[test]
     fn test_from_bits_le_constant() {
-        check_from_bits_le(Mode::Constant, 272, 0, 0, 0);
+        check_from_bits_le(Mode::Constant, 276, 0, 0, 0);
     }
 
     #[test]
     fn test_from_bits_le_public() {
-        check_from_bits_le(Mode::Public, 9, 0, 1875, 1881);
+        check_from_bits_le(Mode::Public, 9, 0, 1879, 1881);
     }
 
     #[test]
     fn test_from_bits_le_private() {
-        check_from_bits_le(Mode::Private, 9, 0, 1875, 1881);
+        check_from_bits_le(Mode::Private, 9, 0, 1879, 1881);
     }
 
     #[test]
     fn test_from_bits_be_constant() {
-        check_from_bits_be(Mode::Constant, 272, 0, 0, 0);
+        check_from_bits_be(Mode::Constant, 276, 0, 0, 0);
     }
 
     #[test]
     fn test_from_bits_be_public() {
-        check_from_bits_be(Mode::Public, 9, 0, 1875, 1881);
+        check_from_bits_be(Mode::Public, 9, 0, 1879, 1881);
     }
 
     #[test]
     fn test_from_bits_be_private() {
-        check_from_bits_be(Mode::Private, 9, 0, 1875, 1881);
+        check_from_bits_be(Mode::Private, 9, 0, 1879, 1881);
     }
 }

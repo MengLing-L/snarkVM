@@ -23,7 +23,6 @@ impl<A: Aleo> ToBits for Value<A> {
         match self {
             Self::Plaintext(plaintext) => plaintext.write_bits_le(vec),
             Self::Record(record) => record.write_bits_le(vec),
-            Self::Future(future) => future.write_bits_le(vec),
         };
     }
 
@@ -33,7 +32,6 @@ impl<A: Aleo> ToBits for Value<A> {
         match self {
             Self::Plaintext(plaintext) => plaintext.write_bits_be(vec),
             Self::Record(record) => record.write_bits_be(vec),
-            Self::Future(future) => future.write_bits_be(vec),
         };
     }
 }

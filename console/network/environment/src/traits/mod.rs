@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub use snarkvm_utilities::{to_bits_le, ToBits};
-
 pub mod algorithms;
 pub use algorithms::*;
 
@@ -34,6 +32,8 @@ pub use parse::*;
 
 pub mod parse_string;
 pub use parse_string::string_parser;
+
+pub use snarkvm_utilities::{to_bits_le, ToBits};
 
 pub mod to_field;
 pub use to_field::*;

@@ -14,12 +14,8 @@
 
 use crate::traits::{FftParameters, PoseidonDefaultParameters};
 
-use core::{fmt::Debug, hash::Hash};
-
 /// A trait that defines parameters for a prime field.
-pub trait FieldParameters:
-    'static + FftParameters + PoseidonDefaultParameters + Copy + Clone + Debug + Default + PartialEq + Eq + Hash
-{
+pub trait FieldParameters: 'static + FftParameters + PoseidonDefaultParameters {
     /// The modulus of the field.
     const MODULUS: Self::BigInteger;
 

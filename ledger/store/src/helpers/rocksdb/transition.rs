@@ -22,11 +22,9 @@ use crate::{
 };
 use console::{
     prelude::*,
-    program::{Ciphertext, Future, Identifier, Plaintext, ProgramID, Record},
+    program::{Ciphertext, Identifier, Plaintext, ProgramID, Record, Value},
     types::{Field, Group},
 };
-
-use aleo_std_storage::StorageMode;
 
 /// A database transition storage.
 #[derive(Clone)]
@@ -37,6 +35,8 @@ pub struct TransitionDB<N: Network> {
     input_store: InputStore<N, InputDB<N>>,
     /// The transition output store.
     output_store: OutputStore<N, OutputDB<N>>,
+    /// The transition finalize inputs.
+    finalize_map: DataMap<N::TransitionID, Option<Vec<Value<N>>>>,
     /// The transition public keys.
     tpk_map: DataMap<N::TransitionID, Group<N>>,
     /// The reverse `tpk` map.
@@ -52,21 +52,23 @@ impl<N: Network> TransitionStorage<N> for TransitionDB<N> {
     type LocatorMap = DataMap<N::TransitionID, (ProgramID<N>, Identifier<N>)>;
     type InputStorage = InputDB<N>;
     type OutputStorage = OutputDB<N>;
+    type FinalizeMap = DataMap<N::TransitionID, Option<Vec<Value<N>>>>;
     type TPKMap = DataMap<N::TransitionID, Group<N>>;
     type ReverseTPKMap = DataMap<Group<N>, N::TransitionID>;
     type TCMMap = DataMap<N::TransitionID, Field<N>>;
     type ReverseTCMMap = DataMap<Field<N>, N::TransitionID>;
 
     /// Initializes the transition storage.
-    fn open<S: Clone + Into<StorageMode>>(storage: S) -> Result<Self> {
+    fn open(dev: Option<u16>) -> Result<Self> {
         Ok(Self {
-            locator_map: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::Transition(TransitionMap::Locator))?,
-            input_store: InputStore::open(storage.clone())?,
-            output_store: OutputStore::open(storage.clone())?,
-            tpk_map: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::Transition(TransitionMap::TPK))?,
-            reverse_tpk_map: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::Transition(TransitionMap::ReverseTPK))?,
-            tcm_map: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::Transition(TransitionMap::TCM))?,
-            reverse_tcm_map: rocksdb::RocksDB::open_map(N::ID, storage,  MapID::Transition(TransitionMap::ReverseTCM))?,
+            locator_map: rocksdb::RocksDB::open_map(N::ID, dev, MapID::Transition(TransitionMap::Locator))?,
+            input_store: InputStore::open(dev)?,
+            output_store: OutputStore::open(dev)?,
+            finalize_map: rocksdb::RocksDB::open_map(N::ID, dev, MapID::Transition(TransitionMap::Finalize))?,
+            tpk_map: rocksdb::RocksDB::open_map(N::ID, dev, MapID::Transition(TransitionMap::TPK))?,
+            reverse_tpk_map: rocksdb::RocksDB::open_map(N::ID, dev, MapID::Transition(TransitionMap::ReverseTPK))?,
+            tcm_map: rocksdb::RocksDB::open_map(N::ID, dev, MapID::Transition(TransitionMap::TCM))?,
+            reverse_tcm_map: rocksdb::RocksDB::open_map(N::ID, dev,  MapID::Transition(TransitionMap::ReverseTCM))?,
         })
     }
 
@@ -83,6 +85,11 @@ impl<N: Network> TransitionStorage<N> for TransitionDB<N> {
     /// Returns the transition output store.
     fn output_store(&self) -> &OutputStore<N, Self::OutputStorage> {
         &self.output_store
+    }
+
+    /// Returns the transition finalize inputs map.
+    fn finalize_map(&self) -> &Self::FinalizeMap {
+        &self.finalize_map
     }
 
     /// Returns the transition public keys.
@@ -125,8 +132,8 @@ pub struct InputDB<N: Network> {
     record_tag: DataMap<Field<N>, Field<N>>,
     /// The mapping of `external commitment` to `()`. Note: This is **not** the record commitment.
     external_record: DataMap<Field<N>, ()>,
-    /// The storage mode.
-    storage_mode: StorageMode,
+    /// The optional development ID.
+    dev: Option<u16>,
 }
 
 #[rustfmt::skip]
@@ -141,17 +148,17 @@ impl<N: Network> InputStorage<N> for InputDB<N> {
     type ExternalRecordMap = DataMap<Field<N>, ()>;
 
     /// Initializes the transition input storage.
-    fn open<S: Clone + Into<StorageMode>>(storage: S) -> Result<Self> {
+    fn open(dev: Option<u16>) -> Result<Self> {
         Ok(Self {
-            id_map: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::TransitionInput(TransitionInputMap::ID))?,
-            reverse_id_map: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::TransitionInput(TransitionInputMap::ReverseID))?,
-            constant: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::TransitionInput(TransitionInputMap::Constant))?,
-            public: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::TransitionInput(TransitionInputMap::Public))?,
-            private: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::TransitionInput(TransitionInputMap::Private))?,
-            record: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::TransitionInput(TransitionInputMap::Record))?,
-            record_tag: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::TransitionInput(TransitionInputMap::RecordTag))?,
-            external_record: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::TransitionInput(TransitionInputMap::ExternalRecord))?,
-            storage_mode: storage.into(),
+            id_map: rocksdb::RocksDB::open_map(N::ID, dev, MapID::TransitionInput(TransitionInputMap::ID))?,
+            reverse_id_map: rocksdb::RocksDB::open_map(N::ID, dev, MapID::TransitionInput(TransitionInputMap::ReverseID))?,
+            constant: rocksdb::RocksDB::open_map(N::ID, dev, MapID::TransitionInput(TransitionInputMap::Constant))?,
+            public: rocksdb::RocksDB::open_map(N::ID, dev, MapID::TransitionInput(TransitionInputMap::Public))?,
+            private: rocksdb::RocksDB::open_map(N::ID, dev, MapID::TransitionInput(TransitionInputMap::Private))?,
+            record: rocksdb::RocksDB::open_map(N::ID, dev, MapID::TransitionInput(TransitionInputMap::Record))?,
+            record_tag: rocksdb::RocksDB::open_map(N::ID, dev, MapID::TransitionInput(TransitionInputMap::RecordTag))?,
+            external_record: rocksdb::RocksDB::open_map(N::ID, dev, MapID::TransitionInput(TransitionInputMap::ExternalRecord))?,
+            dev,
         })
     }
 
@@ -195,9 +202,9 @@ impl<N: Network> InputStorage<N> for InputDB<N> {
         &self.external_record
     }
 
-    /// Returns the storage mode.
-    fn storage_mode(&self) -> &StorageMode {
-        &self.storage_mode
+    /// Returns the optional development ID.
+    fn dev(&self) -> Option<u16> {
+        self.dev
     }
 }
 
@@ -221,10 +228,8 @@ pub struct OutputDB<N: Network> {
     record_nonce: DataMap<Group<N>, Field<N>>,
     /// The mapping of `external commitment` to `()`. Note: This is **not** the record commitment.
     external_record: DataMap<Field<N>, ()>,
-    /// The mapping of `future hash` to `(optional) future`.
-    future: DataMap<Field<N>, Option<Future<N>>>,
-    /// The storage mode.
-    storage_mode: StorageMode,
+    /// The optional development ID.
+    dev: Option<u16>,
 }
 
 #[rustfmt::skip]
@@ -237,21 +242,19 @@ impl<N: Network> OutputStorage<N> for OutputDB<N> {
     type RecordMap = DataMap<Field<N>, (Field<N>, Option<Record<N, Ciphertext<N>>>)>;
     type RecordNonceMap = DataMap<Group<N>, Field<N>>;
     type ExternalRecordMap = DataMap<Field<N>, ()>;
-    type FutureMap = DataMap<Field<N>, Option<Future<N>>>;
 
     /// Initializes the transition output storage.
-    fn open<S: Clone + Into<StorageMode>>(storage: S) -> Result<Self> {
+    fn open(dev: Option<u16>) -> Result<Self> {
         Ok(Self {
-            id_map: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::TransitionOutput(TransitionOutputMap::ID))?,
-            reverse_id_map: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::TransitionOutput(TransitionOutputMap::ReverseID))?,
-            constant: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::TransitionOutput(TransitionOutputMap::Constant))?,
-            public: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::TransitionOutput(TransitionOutputMap::Public))?,
-            private: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::TransitionOutput(TransitionOutputMap::Private))?,
-            record: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::TransitionOutput(TransitionOutputMap::Record))?,
-            record_nonce: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::TransitionOutput(TransitionOutputMap::RecordNonce))?,
-            external_record: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::TransitionOutput(TransitionOutputMap::ExternalRecord))?,
-            future: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::TransitionOutput(TransitionOutputMap::Future))?,
-            storage_mode: storage.into(),
+            id_map: rocksdb::RocksDB::open_map(N::ID, dev, MapID::TransitionOutput(TransitionOutputMap::ID))?,
+            reverse_id_map: rocksdb::RocksDB::open_map(N::ID, dev, MapID::TransitionOutput(TransitionOutputMap::ReverseID))?,
+            constant: rocksdb::RocksDB::open_map(N::ID, dev, MapID::TransitionOutput(TransitionOutputMap::Constant))?,
+            public: rocksdb::RocksDB::open_map(N::ID, dev, MapID::TransitionOutput(TransitionOutputMap::Public))?,
+            private: rocksdb::RocksDB::open_map(N::ID, dev, MapID::TransitionOutput(TransitionOutputMap::Private))?,
+            record: rocksdb::RocksDB::open_map(N::ID, dev, MapID::TransitionOutput(TransitionOutputMap::Record))?,
+            record_nonce: rocksdb::RocksDB::open_map(N::ID, dev, MapID::TransitionOutput(TransitionOutputMap::RecordNonce))?,
+            external_record: rocksdb::RocksDB::open_map(N::ID, dev, MapID::TransitionOutput(TransitionOutputMap::ExternalRecord))?,
+            dev,
         })
     }
 
@@ -295,13 +298,8 @@ impl<N: Network> OutputStorage<N> for OutputDB<N> {
         &self.external_record
     }
 
-    /// Returns the future map.
-    fn future_map(&self) -> &Self::FutureMap {
-        &self.future
-    }
-
-    /// Returns the storage mode.
-    fn storage_mode(&self) -> &StorageMode {
-        &self.storage_mode
+    /// Returns the optional development ID.
+    fn dev(&self) -> Option<u16> {
+        self.dev
     }
 }

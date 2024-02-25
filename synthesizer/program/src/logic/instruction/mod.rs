@@ -26,10 +26,10 @@ mod parse;
 
 use crate::traits::{
     InstructionTrait,
+    RegistersCaller,
+    RegistersCallerCircuit,
     RegistersLoad,
     RegistersLoadCircuit,
-    RegistersSigner,
-    RegistersSignerCircuit,
     RegistersStore,
     RegistersStoreCircuit,
     StackMatches,
@@ -79,14 +79,10 @@ pub enum Instruction<N: Network> {
     AssertEq(AssertEq<N>),
     /// Asserts `first` and `second` are **not** equal.
     AssertNeq(AssertNeq<N>),
-    /// Calls a finalize asynchronously on the operands.
-    Async(Async<N>),
-    /// Calls a closure or function on the operands.
+    /// Calls a closure on the operands.
     Call(Call<N>),
     /// Casts the operands into the declared type.
     Cast(Cast<N>),
-    /// Casts the operands into the declared type, with lossy truncation if applicable.
-    CastLossy(CastLossy<N>),
     /// Performs a BHP commitment on inputs of 256-bit chunks.
     CommitBHP256(CommitBHP256<N>),
     /// Performs a BHP commitment on inputs of 512-bit chunks.
@@ -117,12 +113,6 @@ pub enum Instruction<N: Network> {
     HashBHP768(HashBHP768<N>),
     /// Performs a BHP hash on inputs of 1024-bit chunks.
     HashBHP1024(HashBHP1024<N>),
-    /// Performs a Keccak hash, outputting 256 bits.
-    HashKeccak256(HashKeccak256<N>),
-    /// Performs a Keccak hash, outputting 384 bits.
-    HashKeccak384(HashKeccak384<N>),
-    /// Performs a Keccak hash, outputting 512 bits.
-    HashKeccak512(HashKeccak512<N>),
     /// Performs a Pedersen hash on up to a 64-bit input.
     HashPED64(HashPED64<N>),
     /// Performs a Pedersen hash on up to a 128-bit input.
@@ -133,12 +123,6 @@ pub enum Instruction<N: Network> {
     HashPSD4(HashPSD4<N>),
     /// Performs a Poseidon hash with an input rate of 8.
     HashPSD8(HashPSD8<N>),
-    /// Performs a SHA-3 hash, outputting 256 bits.
-    HashSha3_256(HashSha3_256<N>),
-    /// Performs a SHA-3 hash, outputting 384 bits.
-    HashSha3_384(HashSha3_384<N>),
-    /// Performs a SHA-3 hash, outputting 512 bits.
-    HashSha3_512(HashSha3_512<N>),
     /// Performs a Poseidon hash with an input rate of 2.
     HashManyPSD2(HashManyPSD2<N>),
     /// Performs a Poseidon hash with an input rate of 4.
@@ -181,11 +165,11 @@ pub enum Instruction<N: Network> {
     RemWrapped(RemWrapped<N>),
     /// Shifts `first` left by `second` bits, storing the outcome in `destination`.
     Shl(Shl<N>),
-    /// Shifts `first` left by `second` bits, wrapping around at the boundary of the type, storing the outcome in `destination`.
+    /// Shifts `first` left by `second` bits, continuing past the boundary of the type, storing the outcome in `destination`.
     ShlWrapped(ShlWrapped<N>),
     /// Shifts `first` right by `second` bits, storing the outcome in `destination`.
     Shr(Shr<N>),
-    /// Shifts `first` right by `second` bits, wrapping around at the boundary of the type, storing the outcome in `destination`.
+    /// Shifts `first` right by `second` bits, continuing past the boundary of the type, storing the outcome in `destination`.
     ShrWrapped(ShrWrapped<N>),
     /// Computes whether `signature` is valid for the given `address` and `message`.
     SignVerify(SignVerify<N>),
@@ -239,10 +223,8 @@ macro_rules! instruction {
             And,
             AssertEq,
             AssertNeq,
-            Async,
             Call,
             Cast,
-            CastLossy,
             CommitBHP256,
             CommitBHP512,
             CommitBHP768,
@@ -258,17 +240,11 @@ macro_rules! instruction {
             HashBHP512,
             HashBHP768,
             HashBHP1024,
-            HashKeccak256,
-            HashKeccak384,
-            HashKeccak512,
             HashPED64,
             HashPED128,
             HashPSD2,
             HashPSD4,
             HashPSD8,
-            HashSha3_256,
-            HashSha3_384,
-            HashSha3_512,
             HashManyPSD2,
             HashManyPSD4,
             HashManyPSD8,
@@ -408,7 +384,7 @@ impl<N: Network> Instruction<N> {
     pub fn evaluate(
         &self,
         stack: &(impl StackMatches<N> + StackProgram<N>),
-        registers: &mut (impl RegistersSigner<N> + RegistersLoad<N> + RegistersStore<N>),
+        registers: &mut (impl RegistersCaller<N> + RegistersLoad<N> + RegistersStore<N>),
     ) -> Result<()> {
         instruction!(self, |instruction| instruction.evaluate(stack, registers))
     }
@@ -418,7 +394,7 @@ impl<N: Network> Instruction<N> {
     pub fn execute<A: circuit::Aleo<Network = N>>(
         &self,
         stack: &(impl StackMatches<N> + StackProgram<N>),
-        registers: &mut (impl RegistersSignerCircuit<N, A> + RegistersLoadCircuit<N, A> + RegistersStoreCircuit<N, A>),
+        registers: &mut (impl RegistersCallerCircuit<N, A> + RegistersLoadCircuit<N, A> + RegistersStoreCircuit<N, A>),
     ) -> Result<()> {
         instruction!(self, |instruction| instruction.execute::<A>(stack, registers))
     }
@@ -469,7 +445,7 @@ mod tests {
     fn test_opcodes() {
         // Sanity check the number of instructions is unchanged.
         assert_eq!(
-            68,
+            60,
             Instruction::<CurrentNetwork>::OPCODES.len(),
             "Update me if the number of instructions changes."
         );

@@ -20,8 +20,6 @@ use crate::{
 };
 use console::prelude::*;
 
-use aleo_std_storage::StorageMode;
-
 /// An RocksDB consensus storage.
 #[derive(Clone)]
 pub struct ConsensusDB<N: Network> {
@@ -39,11 +37,11 @@ impl<N: Network> ConsensusStorage<N> for ConsensusDB<N> {
     type TransitionStorage = TransitionDB<N>;
 
     /// Initializes the consensus storage.
-    fn open<S: Clone + Into<StorageMode>>(storage: S) -> Result<Self> {
+    fn open(dev: Option<u16>) -> Result<Self> {
         // Initialize the finalize store.
-        let finalize_store = FinalizeStore::<N, FinalizeDB<N>>::open(storage.clone())?;
+        let finalize_store = FinalizeStore::<N, FinalizeDB<N>>::open(dev)?;
         // Initialize the block store.
-        let block_store = BlockStore::<N, BlockDB<N>>::open(storage)?;
+        let block_store = BlockStore::<N, BlockDB<N>>::open(dev)?;
         // Return the consensus storage.
         Ok(Self {
             finalize_store,

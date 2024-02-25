@@ -62,16 +62,7 @@ impl<N: Network> FromBytes for Output<N> {
                 let commitment = FromBytes::read_le(&mut reader)?;
                 Self::ExternalRecord(commitment)
             }
-            5 => {
-                let future_hash: Field<N> = FromBytes::read_le(&mut reader)?;
-                let future_exists: bool = FromBytes::read_le(&mut reader)?;
-                let future = match future_exists {
-                    true => Some(FromBytes::read_le(&mut reader)?),
-                    false => None,
-                };
-                Self::Future(future_hash, future)
-            }
-            6.. => return Err(error(format!("Failed to decode output variant {index}"))),
+            5.. => return Err(error(format!("Failed to decode output variant {index}"))),
         };
         Ok(literal)
     }
@@ -130,17 +121,6 @@ impl<N: Network> ToBytes for Output<N> {
                 (4 as Variant).write_le(&mut writer)?;
                 commitment.write_le(&mut writer)
             }
-            Self::Future(future_hash, future) => {
-                (5 as Variant).write_le(&mut writer)?;
-                future_hash.write_le(&mut writer)?;
-                match future {
-                    Some(future) => {
-                        true.write_le(&mut writer)?;
-                        future.write_le(&mut writer)
-                    }
-                    None => false.write_le(&mut writer),
-                }
-            }
         }
     }
 }
@@ -148,6 +128,9 @@ impl<N: Network> ToBytes for Output<N> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use console::network::Testnet3;
+
+    type CurrentNetwork = Testnet3;
 
     #[test]
     fn test_bytes() {
@@ -155,6 +138,7 @@ mod tests {
             // Check the byte representation.
             let expected_bytes = expected.to_bytes_le().unwrap();
             assert_eq!(expected, Output::read_le(&expected_bytes[..]).unwrap());
+            assert!(Output::<CurrentNetwork>::read_le(&expected_bytes[1..]).is_err());
         }
     }
 }

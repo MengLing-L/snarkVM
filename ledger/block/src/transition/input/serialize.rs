@@ -20,7 +20,7 @@ impl<N: Network> Serialize for Input<N> {
         match serializer.is_human_readable() {
             true => match self {
                 Self::Constant(id, value) => {
-                    let mut input = serializer.serialize_struct("Input", 2 + value.is_some() as usize)?;
+                    let mut input = serializer.serialize_struct("Input", 3)?;
                     input.serialize_field("type", "constant")?;
                     input.serialize_field("id", &id)?;
                     if let Some(value) = value {
@@ -29,7 +29,7 @@ impl<N: Network> Serialize for Input<N> {
                     input.end()
                 }
                 Self::Public(id, value) => {
-                    let mut input = serializer.serialize_struct("Input", 2 + value.is_some() as usize)?;
+                    let mut input = serializer.serialize_struct("Input", 3)?;
                     input.serialize_field("type", "public")?;
                     input.serialize_field("id", &id)?;
                     if let Some(value) = value {
@@ -38,7 +38,7 @@ impl<N: Network> Serialize for Input<N> {
                     input.end()
                 }
                 Self::Private(id, value) => {
-                    let mut input = serializer.serialize_struct("Input", 2 + value.is_some() as usize)?;
+                    let mut input = serializer.serialize_struct("Input", 3)?;
                     input.serialize_field("type", "private")?;
                     input.serialize_field("id", &id)?;
                     if let Some(value) = value {

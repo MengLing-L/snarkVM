@@ -54,7 +54,6 @@ impl<N: Network> ToFields for Value<N> {
         match self {
             Self::Plaintext(plaintext) => plaintext.to_fields(),
             Self::Record(record) => record.to_fields(),
-            Self::Future(future) => future.to_fields(),
         }
     }
 }

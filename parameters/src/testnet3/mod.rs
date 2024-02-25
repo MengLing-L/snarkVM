@@ -21,13 +21,7 @@ pub use powers::*;
 const REMOTE_URL: &str = "https://s3-us-west-1.amazonaws.com/testnet3.parameters";
 
 // Degrees
-#[cfg(not(feature = "wasm"))]
 impl_local!(Degree15, "resources/", "powers-of-beta-15", "usrs");
-#[cfg(feature = "wasm")]
-impl_remote!(Degree15, REMOTE_URL, "resources/", "powers-of-beta-15", "usrs");
-#[cfg(not(feature = "wasm"))]
-impl_local!(Degree16, "resources/", "powers-of-beta-16", "usrs");
-#[cfg(feature = "wasm")]
 impl_remote!(Degree16, REMOTE_URL, "resources/", "powers-of-beta-16", "usrs");
 impl_remote!(Degree17, REMOTE_URL, "resources/", "powers-of-beta-17", "usrs");
 impl_remote!(Degree18, REMOTE_URL, "resources/", "powers-of-beta-18", "usrs");
@@ -43,13 +37,7 @@ impl_remote!(Degree27, REMOTE_URL, "resources/", "powers-of-beta-27", "usrs");
 impl_remote!(Degree28, REMOTE_URL, "resources/", "powers-of-beta-28", "usrs");
 
 // Shifted Degrees
-#[cfg(not(feature = "wasm"))]
 impl_local!(ShiftedDegree15, "resources/", "shifted-powers-of-beta-15", "usrs");
-#[cfg(feature = "wasm")]
-impl_remote!(ShiftedDegree15, REMOTE_URL, "resources/", "shifted-powers-of-beta-15", "usrs");
-#[cfg(not(feature = "wasm"))]
-impl_local!(ShiftedDegree16, "resources/", "shifted-powers-of-beta-16", "usrs");
-#[cfg(feature = "wasm")]
 impl_remote!(ShiftedDegree16, REMOTE_URL, "resources/", "shifted-powers-of-beta-16", "usrs");
 impl_remote!(ShiftedDegree17, REMOTE_URL, "resources/", "shifted-powers-of-beta-17", "usrs");
 impl_remote!(ShiftedDegree18, REMOTE_URL, "resources/", "shifted-powers-of-beta-18", "usrs");
@@ -72,43 +60,43 @@ impl_local!(BetaH, "resources/", "beta-h", "usrs");
 
 // BondPublic
 impl_remote!(BondPublicProver, REMOTE_URL, "resources/", "bond_public", "prover");
-impl_local!(BondPublicVerifier, "resources/", "bond_public", "verifier");
+impl_remote!(BondPublicVerifier, REMOTE_URL, "resources/", "bond_public", "verifier");
 // UnbondPublic
 impl_remote!(UnbondPublicProver, REMOTE_URL, "resources/", "unbond_public", "prover");
-impl_local!(UnbondPublicVerifier, "resources/", "unbond_public", "verifier");
+impl_remote!(UnbondPublicVerifier, REMOTE_URL, "resources/", "unbond_public", "verifier");
 // UnbondDelegatorAsValidator
 impl_remote!(UnbondDelegatorAsValidatorProver, REMOTE_URL, "resources/", "unbond_delegator_as_validator", "prover");
-impl_local!(UnbondDelegatorAsValidatorVerifier, "resources/", "unbond_delegator_as_validator", "verifier");
+impl_remote!(UnbondDelegatorAsValidatorVerifier, REMOTE_URL, "resources/", "unbond_delegator_as_validator", "verifier");
 // ClaimUnbondPublic
 impl_remote!(ClaimUnbondPublicProver, REMOTE_URL, "resources/", "claim_unbond_public", "prover");
-impl_local!(ClaimUnbondPublicVerifier, "resources/", "claim_unbond_public", "verifier");
+impl_remote!(ClaimUnbondPublicVerifier, REMOTE_URL, "resources/", "claim_unbond_public", "verifier");
 // SetValidatorState
 impl_remote!(SetValidatorStateProver, REMOTE_URL, "resources/", "set_validator_state", "prover");
-impl_local!(SetValidatorStateVerifier, "resources/", "set_validator_state", "verifier");
+impl_remote!(SetValidatorStateVerifier, REMOTE_URL, "resources/", "set_validator_state", "verifier");
 // TransferPrivate
 impl_remote!(TransferPrivateProver, REMOTE_URL, "resources/", "transfer_private", "prover");
-impl_local!(TransferPrivateVerifier, "resources/", "transfer_private", "verifier");
+impl_remote!(TransferPrivateVerifier, REMOTE_URL, "resources/", "transfer_private", "verifier");
 // TransferPublic
 impl_remote!(TransferPublicProver, REMOTE_URL, "resources/", "transfer_public", "prover");
-impl_local!(TransferPublicVerifier, "resources/", "transfer_public", "verifier");
+impl_remote!(TransferPublicVerifier, REMOTE_URL, "resources/", "transfer_public", "verifier");
 // TransferPrivateToPublic
 impl_remote!(TransferPrivateToPublicProver, REMOTE_URL, "resources/", "transfer_private_to_public", "prover");
-impl_local!(TransferPrivateToPublicVerifier, "resources/", "transfer_private_to_public", "verifier");
+impl_remote!(TransferPrivateToPublicVerifier, REMOTE_URL, "resources/", "transfer_private_to_public", "verifier");
 // TransferPublicToPrivate
 impl_remote!(TransferPublicToPrivateProver, REMOTE_URL, "resources/", "transfer_public_to_private", "prover");
-impl_local!(TransferPublicToPrivateVerifier, "resources/", "transfer_public_to_private", "verifier");
+impl_remote!(TransferPublicToPrivateVerifier, REMOTE_URL, "resources/", "transfer_public_to_private", "verifier");
 // Join
 impl_remote!(JoinProver, REMOTE_URL, "resources/", "join", "prover");
-impl_local!(JoinVerifier, "resources/", "join", "verifier");
+impl_remote!(JoinVerifier, REMOTE_URL, "resources/", "join", "verifier");
 // Split
 impl_remote!(SplitProver, REMOTE_URL, "resources/", "split", "prover");
-impl_local!(SplitVerifier, "resources/", "split", "verifier");
+impl_remote!(SplitVerifier, REMOTE_URL, "resources/", "split", "verifier");
 // FeePrivate
 impl_remote!(FeePrivateProver, REMOTE_URL, "resources/", "fee_private", "prover");
-impl_local!(FeePrivateVerifier, "resources/", "fee_private", "verifier");
+impl_remote!(FeePrivateVerifier, REMOTE_URL, "resources/", "fee_private", "verifier");
 // FeePublic
 impl_remote!(FeePublicProver, REMOTE_URL, "resources/", "fee_public", "prover");
-impl_local!(FeePublicVerifier, "resources/", "fee_public", "verifier");
+impl_remote!(FeePublicVerifier, REMOTE_URL, "resources/", "fee_public", "verifier");
 
 #[macro_export]
 macro_rules! insert_credit_keys {
@@ -146,7 +134,7 @@ macro_rules! insert_key {
 
 // Inclusion
 impl_remote!(InclusionProver, REMOTE_URL, "resources/", "inclusion", "prover");
-impl_local!(InclusionVerifier, "resources/", "inclusion", "verifier");
+impl_remote!(InclusionVerifier, REMOTE_URL, "resources/", "inclusion", "verifier");
 
 /// The function name for the inclusion circuit.
 pub const TESTNET3_INCLUSION_FUNCTION_NAME: &str = "inclusion";

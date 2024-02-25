@@ -24,38 +24,31 @@ use crate::{
     },
 };
 use snarkvm_fields::{Field, PrimeField};
-use snarkvm_utilities::{cfg_into_iter, cfg_iter, cfg_iter_mut, serialize::*};
+use snarkvm_utilities::{cfg_iter, cfg_iter_mut, serialize::*};
 
-use anyhow::{anyhow, ensure, Result};
-
-#[cfg(feature = "serial")]
+use anyhow::{ensure, Result};
 use itertools::Itertools;
+use std::collections::BTreeMap;
+
 #[cfg(not(feature = "serial"))]
 use rayon::prelude::*;
 
 // This function converts a matrix output by Zexe's constraint infrastructure
 // to the one used in this crate.
-pub(crate) fn into_matrix_helper<F: Field>(
-    matrix: Vec<Vec<(F, VarIndex)>>,
-    num_input_variables: usize,
-) -> Result<Matrix<F>> {
-    cfg_into_iter!(matrix)
+pub(crate) fn to_matrix_helper<F: Field>(matrix: &[Vec<(F, VarIndex)>], num_input_variables: usize) -> Matrix<F> {
+    cfg_iter!(matrix)
         .map(|row| {
-            let mut row_map = Vec::with_capacity(row.len());
-            for (val, column) in row {
-                ensure!(val != F::zero(), "matrix entries should be non-zero");
-                let column = match column {
-                    VarIndex::Public(i) => i,
-                    VarIndex::Private(i) => num_input_variables + i,
-                };
-                match row_map.binary_search_by_key(&column, |(_, c)| *c) {
-                    Ok(idx) => row_map[idx].0 += val,
-                    Err(idx) => {
-                        row_map.insert(idx, (val, column));
-                    }
+            let mut row_map = BTreeMap::new();
+            row.iter().for_each(|(val, column)| {
+                if !val.is_zero() {
+                    let column = match column {
+                        VarIndex::Public(i) => *i,
+                        VarIndex::Private(i) => num_input_variables + i,
+                    };
+                    *row_map.entry(column).or_insert_with(F::zero) += *val;
                 }
-            }
-            Ok(row_map)
+            });
+            row_map.into_iter().map(|(column, val)| (val, column)).collect()
         })
         .collect()
 }
@@ -65,7 +58,7 @@ pub(crate) fn into_matrix_helper<F: Field>(
 pub(crate) fn add_randomizing_variables<F: PrimeField, CS: ConstraintSystem<F>>(
     cs: &mut CS,
     rand_assignments: Option<[F; 3]>,
-) -> Result<()> {
+) {
     let mut assignments = [F::one(); 3];
     if let Some(r) = rand_assignments {
         assignments = r;
@@ -74,35 +67,33 @@ pub(crate) fn add_randomizing_variables<F: PrimeField, CS: ConstraintSystem<F>>(
     let zk_vars = assignments
         .into_iter()
         .enumerate()
-        .map(|(i, assignment)| cs.alloc(|| format!("random_{i}"), || Ok(assignment)))
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(|(i, assignment)| cs.alloc(|| format!("random_{i}"), || Ok(assignment)).unwrap())
+        .collect_vec();
     cs.enforce(|| "constraint zk", |lc| lc + zk_vars[0], |lc| lc + zk_vars[1], |lc| lc + zk_vars[2]);
-    Ok(())
 }
 
 /// Pads the public variables up to the closest power of two.
-pub(crate) fn pad_input_for_indexer_and_prover<F: PrimeField, CS: ConstraintSystem<F>>(cs: &mut CS) -> Result<()> {
+pub(crate) fn pad_input_for_indexer_and_prover<F: PrimeField, CS: ConstraintSystem<F>>(cs: &mut CS) {
     let num_public_variables = cs.num_public_variables();
 
-    let power_of_two =
-        EvaluationDomain::<F>::new(num_public_variables).ok_or(anyhow!("Could not create EvaluationDomain"))?;
+    let power_of_two = EvaluationDomain::<F>::new(num_public_variables);
+    assert!(power_of_two.is_some());
 
     // Allocated `zero` variables to pad the public input up to the next power of two.
-    let padded_size = power_of_two.size();
+    let padded_size = power_of_two.unwrap().size();
     if padded_size > num_public_variables {
         for i in 0..(padded_size - num_public_variables) {
-            cs.alloc_input(|| format!("pad_input_{i}"), || Ok(F::zero()))?;
+            cs.alloc_input(|| format!("pad_input_{i}"), || Ok(F::zero())).unwrap();
         }
     }
-    Ok(())
 }
 
-#[derive(Debug, CanonicalSerialize, CanonicalDeserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize, PartialEq, Eq)]
 pub struct MatrixEvals<F: PrimeField> {
-    /// Evaluations of the `row` polynomial.
-    pub row: EvaluationsOnDomain<F>,
     /// Evaluations of the `col` polynomial.
     pub col: EvaluationsOnDomain<F>,
+    /// Evaluations of the `row` polynomial.
+    pub row: EvaluationsOnDomain<F>,
     /// Evaluations of the `row_col` polynomial.
     /// After indexing, we drop these evaluations to save space in the ProvingKey
     pub row_col: Option<EvaluationsOnDomain<F>>,
@@ -112,26 +103,30 @@ pub struct MatrixEvals<F: PrimeField> {
 
 impl<F: PrimeField> MatrixEvals<F> {
     pub(crate) fn evaluate(&self, lagrange_coefficients_at_point: &[F]) -> Result<[F; 4]> {
+        ensure!(self.row_col.is_some(), "row_col evaluations are not available");
         Ok([
-            self.row.evaluate_with_coeffs(lagrange_coefficients_at_point),
-            self.col.evaluate_with_coeffs(lagrange_coefficients_at_point),
-            self.row_col
-                .as_ref()
-                .ok_or("row_col evaluations are not available")
-                .map_err(anyhow::Error::msg)?
-                .evaluate_with_coeffs(lagrange_coefficients_at_point),
-            self.row_col_val.evaluate_with_coeffs(lagrange_coefficients_at_point),
+            self.col.evaluate_with_coeffs_eq(lagrange_coefficients_at_point),
+            self.row.evaluate_with_coeffs_eq(lagrange_coefficients_at_point),
+            self.row_col.as_ref().unwrap().evaluate_with_coeffs_eq(lagrange_coefficients_at_point),
+            self.row_col_val.evaluate_with_coeffs_eq(lagrange_coefficients_at_point),
         ])
     }
+}
 
-    pub(crate) fn domain(&self) -> Result<EvaluationDomain<F>> {
-        ensure!(self.row.domain() == self.col.domain());
-        if let Some(row_col) = self.row_col.as_ref() {
-            ensure!(self.row.domain() == row_col.domain());
-        }
-        ensure!(self.row.domain() == self.row_col_val.domain());
-        Ok(self.row.domain())
-    }
+/// Contains information about the arithmetization of the matrices, as per the Aleo protocol docs
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize, PartialEq, Eq)]
+pub struct MatrixArithmetization<F: PrimeField> {
+    /// LDE of the row indices of M^*.
+    pub row: LabeledPolynomial<F>,
+    /// LDE of the column indices of M^*.
+    pub col: LabeledPolynomial<F>,
+    /// LDE of the vector containing entry-wise products of `row` and `col`.
+    pub row_col: LabeledPolynomial<F>,
+    /// LDE of the vector containing entry-wise products of `row`, `col` and the non-zero entries of M.
+    pub row_col_val: LabeledPolynomial<F>,
+
+    /// Evaluation of the above polynomials on the domain `K`.
+    pub evals_on_K: MatrixEvals<F>,
 }
 
 pub(crate) fn matrix_evals<F: PrimeField>(
@@ -194,55 +189,29 @@ pub(crate) fn matrix_evals<F: PrimeField>(
 }
 
 // TODO for debugging: add test that checks result of arithmetize_matrix(M).
-/// Contains information about the arithmetization of the matrices
-#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize, PartialEq, Eq)]
-pub struct MatrixArithmetization<F: PrimeField> {
-    /// LDE of the row indices of M^*.
-    pub row: LabeledPolynomial<F>,
-    /// LDE of the column indices of M^*.
-    pub col: LabeledPolynomial<F>,
-    /// LDE of the vector containing entry-wise products of `row` and `col`.
-    pub row_col: LabeledPolynomial<F>,
-    /// LDE of the vector containing entry-wise products of `row`, `col` and the non-zero entries of M.
-    pub row_col_val: LabeledPolynomial<F>,
-}
+pub(crate) fn arithmetize_matrix<F: PrimeField>(
+    id: &CircuitId,
+    label: &str,
+    matrix_evals: MatrixEvals<F>,
+) -> Result<MatrixArithmetization<F>> {
+    ensure!(matrix_evals.row_col.is_some(), "row_col evaluations are not available");
 
-impl<F: PrimeField> MatrixArithmetization<F> {
-    /// Create a new MatrixArithmetization
-    pub fn new(id: &CircuitId, label: &str, matrix_evals: &MatrixEvals<F>) -> Result<MatrixArithmetization<F>> {
-        let interpolate_time = start_timer!(|| "Interpolating on K");
-        let non_zero_domain = matrix_evals.domain()?;
-        let row = matrix_evals.row.clone().interpolate();
-        let col = matrix_evals.col.clone().interpolate();
-        let row_col = if let Some(row_col) = matrix_evals.row_col.as_ref() {
-            row_col.clone().interpolate()
-        } else {
-            ensure!(matrix_evals.row.evaluations.len() == matrix_evals.col.evaluations.len());
-            let row_col_evals: Vec<F> = cfg_iter!(matrix_evals.row.evaluations)
-                .zip_eq(&matrix_evals.col.evaluations)
-                .map(|(&r, &c)| r * c)
-                .collect();
-            EvaluationsOnDomain::<F>::from_vec_and_domain(row_col_evals, non_zero_domain).interpolate()
-        };
-        let row_col_val = matrix_evals.row_col_val.clone().interpolate();
-        end_timer!(interpolate_time);
+    let interpolate_time = start_timer!(|| "Interpolating on K");
+    let col = matrix_evals.col.clone().interpolate();
+    let row = matrix_evals.row.clone().interpolate();
+    let row_col = matrix_evals.row_col.as_ref().unwrap().clone().interpolate();
+    let row_col_val = matrix_evals.row_col_val.clone().interpolate();
+    end_timer!(interpolate_time);
 
-        let mut labels = AHPForR1CS::<F, VarunaHidingMode>::index_polynomial_labels_single(label, id);
-        ensure!(labels.len() == 4);
+    let mut labels = AHPForR1CS::<F, VarunaHidingMode>::index_polynomial_labels_m(*id, label);
 
-        Ok(MatrixArithmetization {
-            row: LabeledPolynomial::new(labels.next().unwrap(), row, None, None),
-            col: LabeledPolynomial::new(labels.next().unwrap(), col, None, None),
-            row_col: LabeledPolynomial::new(labels.next().unwrap(), row_col, None, None),
-            row_col_val: LabeledPolynomial::new(labels.next().unwrap(), row_col_val, None, None),
-        })
-    }
-
-    /// Iterate over the indexed polynomials.
-    pub fn into_iter(self) -> impl ExactSizeIterator<Item = LabeledPolynomial<F>> {
-        // Alphabetical order
-        [self.col, self.row, self.row_col, self.row_col_val].into_iter()
-    }
+    Ok(MatrixArithmetization {
+        col: LabeledPolynomial::new(labels.next().unwrap(), col, None, None),
+        row: LabeledPolynomial::new(labels.next().unwrap(), row, None, None),
+        row_col: LabeledPolynomial::new(labels.next().unwrap(), row_col, None, None),
+        row_col_val: LabeledPolynomial::new(labels.next().unwrap(), row_col_val, None, None),
+        evals_on_K: matrix_evals,
+    })
 }
 
 /// Compute the transpose of a sparse matrix
@@ -331,7 +300,7 @@ mod tests {
             )
             .unwrap();
             let dummy_id = CircuitId([0; 32]);
-            let arith = MatrixArithmetization::new(&dummy_id, label, &evals).unwrap();
+            let arith = arithmetize_matrix(&dummy_id, label, evals).unwrap();
 
             for (k_index, k) in interpolation_domain.elements().enumerate() {
                 let row_val = arith.row.evaluate(k);
@@ -339,6 +308,9 @@ mod tests {
                 let row_col = arith.row_col.evaluate(k);
 
                 let row_col_val = arith.row_col_val.evaluate(k);
+                assert_eq!(arith.evals_on_K.row[k_index], row_val);
+                assert_eq!(arith.evals_on_K.col[k_index], col_val);
+                assert_eq!(arith.evals_on_K.row_col_val[k_index], row_col_val);
                 if k_index < num_non_zero {
                     let col = *dbg!(reindexed_inverse_map.get(&col_val).unwrap());
                     let row = *dbg!(inverse_map.get(&row_val).unwrap());

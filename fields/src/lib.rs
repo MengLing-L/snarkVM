@@ -16,6 +16,9 @@
 #![forbid(unsafe_code)]
 
 #[macro_use]
+extern crate derivative;
+
+#[macro_use]
 extern crate thiserror;
 
 #[macro_use]
@@ -42,7 +45,6 @@ mod legendre;
 pub use legendre::*;
 
 mod to_field_vec;
-#[allow(unused_imports)]
 pub use to_field_vec::*;
 
 pub mod traits;

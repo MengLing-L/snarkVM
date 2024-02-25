@@ -23,7 +23,9 @@ impl<E: Environment, I: IntegerType> FromBits for Integer<E, I> {
         let num_bits = bits_le.len() as u64;
         if num_bits > I::BITS {
             // Check that all excess bits are zero.
-            Boolean::assert_bits_are_zero(&bits_le[I::BITS as usize..])
+            for bit in &bits_le[I::BITS as usize..] {
+                E::assert_eq(E::zero(), bit);
+            }
         }
 
         // Construct the sanitized list of bits, resizing up if necessary.
@@ -74,7 +76,7 @@ mod tests {
             });
 
             // Add excess zero bits.
-            let candidate = [given_bits, vec![Boolean::new(mode, false); i as usize]].concat();
+            let candidate = vec![given_bits, vec![Boolean::new(mode, false); i as usize]].concat();
 
             Circuit::scope(&format!("Excess {mode} {i}"), || {
                 let candidate = Integer::<Circuit, I>::from_bits_le(&candidate);
@@ -84,7 +86,7 @@ mod tests {
                     true => assert_scope!(num_constants, num_public, num_private, num_constraints),
                     // `num_constraints` is incremented by one for each excess bit.
                     false => {
-                        assert_scope!(num_constants, num_public, num_private, if i == 0 { 0 } else { 1 })
+                        assert_scope!(num_constants, num_public, num_private, num_constraints + i)
                     }
                 };
             });
@@ -114,7 +116,7 @@ mod tests {
             });
 
             // Add excess zero bits.
-            let candidate = [vec![Boolean::new(mode, false); i as usize], given_bits].concat();
+            let candidate = vec![vec![Boolean::new(mode, false); i as usize], given_bits].concat();
 
             Circuit::scope(&format!("Excess {mode} {i}"), || {
                 let candidate = Integer::<Circuit, I>::from_bits_be(&candidate);
@@ -124,7 +126,7 @@ mod tests {
                     true => assert_scope!(num_constants, num_public, num_private, num_constraints),
                     // `num_constraints` is incremented by one for each excess bit.
                     false => {
-                        assert_scope!(num_constants, num_public, num_private, if i == 0 { 0 } else { 1 })
+                        assert_scope!(num_constants, num_public, num_private, num_constraints + i)
                     }
                 };
             });

@@ -21,7 +21,7 @@ impl<N: Network> FromBytes for Header<N> {
         // Read the version.
         let version = u8::read_le(&mut reader)?;
         // Ensure the version is valid.
-        if version != 1 {
+        if version != 0 {
             return Err(error("Invalid header version"));
         }
 
@@ -30,8 +30,7 @@ impl<N: Network> FromBytes for Header<N> {
         let transactions_root = Field::<N>::read_le(&mut reader)?;
         let finalize_root = Field::<N>::read_le(&mut reader)?;
         let ratifications_root = Field::<N>::read_le(&mut reader)?;
-        let solutions_root = Field::<N>::read_le(&mut reader)?;
-        let subdag_root = Field::<N>::read_le(&mut reader)?;
+        let coinbase_accumulator_point = Field::<N>::read_le(&mut reader)?;
         let metadata = Metadata::read_le(&mut reader)?;
 
         // Construct the block header.
@@ -40,8 +39,7 @@ impl<N: Network> FromBytes for Header<N> {
             transactions_root,
             finalize_root,
             ratifications_root,
-            solutions_root,
-            subdag_root,
+            coinbase_accumulator_point,
             metadata,
         )
         .map_err(|e| error(e.to_string()))
@@ -53,7 +51,7 @@ impl<N: Network> ToBytes for Header<N> {
     #[inline]
     fn write_le<W: Write>(&self, mut writer: W) -> IoResult<()> {
         // Write the version.
-        1u8.write_le(&mut writer)?;
+        0u8.write_le(&mut writer)?;
 
         // Write to the buffer.
         self.previous_state_root.write_le(&mut writer)?;
@@ -61,7 +59,6 @@ impl<N: Network> ToBytes for Header<N> {
         self.finalize_root.write_le(&mut writer)?;
         self.ratifications_root.write_le(&mut writer)?;
         self.solutions_root.write_le(&mut writer)?;
-        self.subdag_root.write_le(&mut writer)?;
         self.metadata.write_le(&mut writer)
     }
 }

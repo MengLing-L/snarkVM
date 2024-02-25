@@ -30,49 +30,6 @@ use std::str::FromStr;
 #[cfg(not(feature = "serial"))]
 use rayon::prelude::*;
 
-/// Returns the committee given the committee map from finalize storage.
-pub fn committee_map_into_committee<N: Network>(
-    starting_round: u64,
-    committee_map: Vec<(Plaintext<N>, Value<N>)>,
-) -> Result<Committee<N>> {
-    // Prepare the identifiers.
-    let microcredits_identifier = Identifier::from_str("microcredits")?;
-    let is_open_identifier = Identifier::from_str("is_open")?;
-
-    // Extract the committee members.
-    let committee_members = committee_map
-        .iter()
-        .map(|(key, value)| {
-            // Extract the address from the key.
-            let address = match key {
-                Plaintext::Literal(Literal::Address(address), _) => address,
-                _ => bail!("Invalid committee key (missing address) - {key}"),
-            };
-            // Extract the committee state from the value.
-            match value {
-                Value::Plaintext(Plaintext::Struct(state, _)) => {
-                    // Extract the microcredits from the value.
-                    let microcredits = match state.get(&microcredits_identifier) {
-                        Some(Plaintext::Literal(Literal::U64(microcredits), _)) => **microcredits,
-                        _ => bail!("Invalid committee state (missing microcredits) - {value}"),
-                    };
-                    // Extract the is_open flag from the value.
-                    let is_open = match state.get(&is_open_identifier) {
-                        Some(Plaintext::Literal(Literal::Boolean(is_open), _)) => **is_open,
-                        _ => bail!("Invalid committee state (missing boolean) - {value}"),
-                    };
-                    // Return the committee state.
-                    Ok((*address, (microcredits, is_open)))
-                }
-                _ => bail!("Invalid committee value (missing struct) - {value}"),
-            }
-        })
-        .collect::<Result<IndexMap<_, _>>>()?;
-
-    // Return the committee.
-    Committee::new(starting_round, committee_members)
-}
-
 /// Returns the stakers given the bonded map from finalize storage.
 pub fn bonded_map_into_stakers<N: Network>(
     bonded_map: Vec<(Plaintext<N>, Value<N>)>,
@@ -110,6 +67,58 @@ pub fn bonded_map_into_stakers<N: Network>(
 
     // Convert the bonded map into stakers.
     bonded_map.into_iter().map(|(key, value)| convert(key, value)).collect::<Result<IndexMap<_, _>>>()
+}
+
+/// Checks that the given committee from committee storage matches the given committee map from finalize storage.
+pub fn ensure_committee_matches<N: Network>(
+    committee: &Committee<N>,
+    committee_map: &[(Plaintext<N>, Value<N>)],
+) -> Result<()> {
+    // Prepare the identifiers.
+    let microcredits_identifier = Identifier::from_str("microcredits")?;
+    let is_open_identifier = Identifier::from_str("is_open")?;
+
+    // Extract the committee map.
+    let committee_map = committee_map
+        .iter()
+        .map(|(key, value)| {
+            // Extract the address from the key.
+            let address = match key {
+                Plaintext::Literal(Literal::Address(address), _) => address,
+                _ => bail!("Invalid committee key (missing address) - {key}"),
+            };
+            // Extract the committee state from the value.
+            match value {
+                Value::Plaintext(Plaintext::Struct(state, _)) => {
+                    // Extract the microcredits from the value.
+                    let microcredits = match state.get(&microcredits_identifier) {
+                        Some(Plaintext::Literal(Literal::U64(microcredits), _)) => **microcredits,
+                        _ => bail!("Invalid committee state (missing microcredits) - {value}"),
+                    };
+                    // Extract the is_open flag from the value.
+                    let is_open = match state.get(&is_open_identifier) {
+                        Some(Plaintext::Literal(Literal::Boolean(is_open), _)) => **is_open,
+                        _ => bail!("Invalid committee state (missing boolean) - {value}"),
+                    };
+                    // Return the committee state.
+                    Ok((address, (microcredits, is_open)))
+                }
+                _ => bail!("Invalid committee value (missing struct) - {value}"),
+            }
+        })
+        .collect::<Result<IndexMap<_, _>>>()?;
+
+    // Ensure the committee and committee map match.
+    ensure!(committee.members().len() == committee_map.len(), "Committee and committee map length do not match");
+
+    // Iterate over the committee and ensure the committee and committee map match.
+    for (address, (microcredits, is_open)) in committee.members() {
+        ensure!(committee_map.contains_key(&address), "Committee is missing an address");
+        let (candidate_microcredits, candidate_is_open) = committee_map.get(&address).unwrap();
+        ensure!(*microcredits == *candidate_microcredits, "Committee contains an incorrect 'microcredits' amount");
+        ensure!(*is_open == *candidate_is_open, "Committee contains an incorrect 'is_open' flag");
+    }
+    Ok(())
 }
 
 /// Checks that the given committee from committee storage matches the given stakers.
@@ -232,16 +241,14 @@ pub fn to_next_commitee_map_and_bonded_map<N: Network>(
 #[cfg(test)]
 pub(crate) mod test_helpers {
     use super::*;
-    use crate::vm::TestRng;
     use ledger_committee::MIN_VALIDATOR_STAKE;
 
-    use rand::{CryptoRng, Rng};
+    use rand::Rng;
 
     /// Returns the stakers, given the map of `(validator, (microcredits, is_open))` entries.
     /// This method simulates the existence of delegators for the members.
-    pub(crate) fn to_stakers<N: Network, R: Rng + CryptoRng>(
+    pub(crate) fn to_stakers<N: Network>(
         members: &IndexMap<Address<N>, (u64, bool)>,
-        rng: &mut R,
     ) -> IndexMap<Address<N>, (Address<N>, u64)> {
         members
             .into_iter()
@@ -254,9 +261,9 @@ pub(crate) mod test_helpers {
                 let num_iterations = (remaining_microcredits / staker_amount).saturating_sub(1);
 
                 // Construct the map of stakers.
-                let rngs = (0..num_iterations).map(|_| TestRng::from_seed(rng.gen())).collect::<Vec<_>>();
-                let mut stakers: IndexMap<_, _> = cfg_into_iter!(rngs)
-                    .map(|mut rng| {
+                let mut stakers: IndexMap<_, _> = cfg_into_iter!((0..num_iterations))
+                    .map(|_| {
+                        let rng = &mut rand::thread_rng();
                         // Sample a random staker.
                         let staker = Address::<N>::new(rng.gen());
                         // Output the staker.
@@ -270,6 +277,7 @@ pub(crate) mod test_helpers {
                 // Insert the last staker.
                 let final_amount = remaining_microcredits.saturating_sub(num_iterations * staker_amount);
                 if final_amount > 0 {
+                    let rng = &mut rand::thread_rng();
                     let staker = Address::<N>::new(rng.gen());
                     stakers.insert(staker, (*validator, final_amount));
                 }
@@ -328,31 +336,13 @@ mod tests {
     }
 
     #[test]
-    fn test_committee_map_into_committee() {
-        let rng = &mut TestRng::default();
-
-        // Sample a committee.
-        let committee = ledger_committee::test_helpers::sample_committee_for_round_and_size(1, 100, rng);
-
-        // Initialize the committee map.
-        let committee_map = to_committee_map(committee.members());
-
-        // Start a timer.
-        let timer = std::time::Instant::now();
-        // Convert the committee map into a committee.
-        let candidate_committee = committee_map_into_committee(committee.starting_round(), committee_map).unwrap();
-        println!("committee_map_into_committee: {}ms", timer.elapsed().as_millis());
-        assert_eq!(candidate_committee, committee);
-    }
-
-    #[test]
     fn test_bonded_map_into_stakers() {
         let rng = &mut TestRng::default();
 
         // Sample a committee.
         let committee = ledger_committee::test_helpers::sample_committee_for_round_and_size(1, 100, rng);
         // Convert the committee into stakers.
-        let expected_stakers = crate::committee::test_helpers::to_stakers(committee.members(), rng);
+        let expected_stakers = crate::committee::test_helpers::to_stakers(committee.members());
         // Initialize the bonded map.
         let bonded_map = to_bonded_map(&expected_stakers);
 
@@ -366,13 +356,30 @@ mod tests {
     }
 
     #[test]
+    fn test_ensure_committee_matches() {
+        let rng = &mut TestRng::default();
+
+        // Sample a committee.
+        let committee = ledger_committee::test_helpers::sample_committee(rng);
+        // Convert the committee into a committee map.
+        let committee_map = to_committee_map(committee.members());
+
+        // Start a timer.
+        let timer = std::time::Instant::now();
+        // Ensure the committee matches.
+        let result = ensure_committee_matches(&committee, &committee_map);
+        println!("ensure_committee_matches: {}ms", timer.elapsed().as_millis());
+        assert!(result.is_ok());
+    }
+
+    #[test]
     fn test_ensure_stakers_matches() {
         let rng = &mut TestRng::default();
 
         // Sample a committee.
         let committee = ledger_committee::test_helpers::sample_committee_for_round_and_size(1, 100, rng);
         // Convert the committee into stakers.
-        let stakers = crate::committee::test_helpers::to_stakers(committee.members(), rng);
+        let stakers = crate::committee::test_helpers::to_stakers(committee.members());
 
         // Start a timer.
         let timer = std::time::Instant::now();
@@ -389,7 +396,7 @@ mod tests {
         // Sample a committee.
         let committee = ledger_committee::test_helpers::sample_committee_for_round_and_size(1, 100, rng);
         // Convert the committee into stakers.
-        let stakers = crate::committee::test_helpers::to_stakers(committee.members(), rng);
+        let stakers = crate::committee::test_helpers::to_stakers(committee.members());
 
         // Start a timer.
         let timer = std::time::Instant::now();
@@ -408,7 +415,7 @@ mod tests {
         // Sample a committee.
         let committee = ledger_committee::test_helpers::sample_committee(rng);
         // Convert the committee into stakers.
-        let stakers = crate::committee::test_helpers::to_stakers(committee.members(), rng);
+        let stakers = crate::committee::test_helpers::to_stakers(committee.members());
 
         // Start a timer.
         let timer = std::time::Instant::now();

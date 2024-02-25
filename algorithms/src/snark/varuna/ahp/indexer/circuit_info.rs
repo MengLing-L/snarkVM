@@ -13,14 +13,14 @@
 // limitations under the License.
 
 use crate::snark::varuna::{ahp::AHPForR1CS, SNARKMode};
-use anyhow::Result;
 use snarkvm_fields::PrimeField;
 use snarkvm_utilities::{serialize::*, ToBytes};
 
 /// Information about the circuit, including the field of definition, the number of
 /// variables, the number of constraints, and the maximum number of non-zero
 /// entries in any of the constraint matrices.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Ord, PartialOrd, CanonicalSerialize, CanonicalDeserialize)]
 pub struct CircuitInfo {
     /// The number of public inputs after padding.
     pub num_public_inputs: usize,
@@ -38,9 +38,9 @@ pub struct CircuitInfo {
 
 impl CircuitInfo {
     /// The maximum degree of polynomial required to represent this index in the AHP.
-    pub fn max_degree<F: PrimeField, SM: SNARKMode>(&self) -> Result<usize> {
+    pub fn max_degree<F: PrimeField, MM: SNARKMode>(&self) -> usize {
         let max_non_zero = self.num_non_zero_a.max(self.num_non_zero_b).max(self.num_non_zero_c);
-        AHPForR1CS::<F, SM>::max_degree(self.num_constraints, self.num_variables, max_non_zero)
+        AHPForR1CS::<F, MM>::max_degree(self.num_constraints, self.num_variables, max_non_zero).unwrap()
     }
 }
 

@@ -20,12 +20,12 @@ impl<N: Network> FromBytes for Ratify<N> {
         // Read the version.
         let version = u8::read_le(&mut reader)?;
         // Ensure the version is valid.
-        if version != 1 {
+        if version != 0 {
             return Err(error("Invalid ratify version"));
         }
 
         let variant = Variant::read_le(&mut reader)?;
-        let ratify = match variant {
+        let literal = match variant {
             0 => {
                 // Read the committee.
                 let committee: Committee<N> = FromBytes::read_le(&mut reader)?;
@@ -58,7 +58,7 @@ impl<N: Network> FromBytes for Ratify<N> {
             }
             3.. => return Err(error(format!("Failed to decode ratify object variant {variant}"))),
         };
-        Ok(ratify)
+        Ok(literal)
     }
 }
 
@@ -66,7 +66,7 @@ impl<N: Network> ToBytes for Ratify<N> {
     /// Writes the ratify object to a buffer.
     fn write_le<W: Write>(&self, mut writer: W) -> IoResult<()> {
         // Write the version.
-        1u8.write_le(&mut writer)?;
+        0u8.write_le(&mut writer)?;
 
         match self {
             Self::Genesis(committee, public_balances) => {
@@ -94,15 +94,19 @@ impl<N: Network> ToBytes for Ratify<N> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use console::network::Testnet3;
+
+    type CurrentNetwork = Testnet3;
 
     #[test]
     fn test_bytes() {
         let rng = &mut TestRng::default();
 
-        for expected in crate::ratify::test_helpers::sample_ratifications(rng) {
+        for expected in crate::ratify::test_helpers::sample_ratify_objects(rng) {
             // Check the byte representation.
             let expected_bytes = expected.to_bytes_le().unwrap();
             assert_eq!(expected, Ratify::read_le(&expected_bytes[..]).unwrap());
+            assert!(Ratify::<CurrentNetwork>::read_le(&expected_bytes[1..]).is_err());
         }
     }
 }

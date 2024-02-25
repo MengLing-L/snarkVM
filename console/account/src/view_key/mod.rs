@@ -26,10 +26,8 @@ use crate::PrivateKey;
 use snarkvm_console_network::prelude::*;
 use snarkvm_console_types::{Address, Scalar};
 
-use zeroize::Zeroize;
-
 /// The account view key used to decrypt records and ciphertext.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ViewKey<N: Network>(Scalar<N>);
 
 impl<N: Network> ViewKey<N> {

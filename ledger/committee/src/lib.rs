@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![forbid(unsafe_code)]
-#![warn(clippy::cast_possible_truncation)]
-
 mod bytes;
 mod serialize;
 mod string;
@@ -47,25 +44,18 @@ pub struct Committee<N: Network> {
 }
 
 impl<N: Network> Committee<N> {
-    /// The maximum number of members that may be in a committee.
-    pub const MAX_COMMITTEE_SIZE: u16 = 200;
-
     /// Initializes a new `Committee` instance.
     pub fn new_genesis(members: IndexMap<Address<N>, (u64, bool)>) -> Result<Self> {
+        // Ensure there are exactly 4 members.
+        ensure!(members.len() == 4, "Genesis committee must have 4 members");
         // Return the new committee.
         Self::new(0u64, members)
     }
 
     /// Initializes a new `Committee` instance.
     pub fn new(starting_round: u64, members: IndexMap<Address<N>, (u64, bool)>) -> Result<Self> {
-        // Ensure there are at least 3 members.
-        ensure!(members.len() >= 3, "Committee must have at least 3 members");
-        // Ensure there are no more than the maximum number of members.
-        ensure!(
-            members.len() <= Self::MAX_COMMITTEE_SIZE as usize,
-            "Committee must have no more than {} members",
-            Self::MAX_COMMITTEE_SIZE
-        );
+        // Ensure there are at least 4 members.
+        ensure!(members.len() >= 4, "Committee must have at least 4 members");
         // Ensure all members have the minimum required stake.
         ensure!(
             members.values().all(|(stake, _)| *stake >= MIN_VALIDATOR_STAKE),
@@ -73,8 +63,6 @@ impl<N: Network> Committee<N> {
         );
         // Compute the total stake of the committee for this round.
         let total_stake = Self::compute_total_stake(&members)?;
-        #[cfg(feature = "metrics")]
-        metrics::gauge(metrics::committee::TOTAL_STAKE, total_stake as f64);
         // Return the new committee.
         Ok(Self { starting_round, members, total_stake })
     }
@@ -170,7 +158,7 @@ impl<N: Network> Committee<N> {
         // Hash the round seed.
         let hash = Literal::Field(N::hash_to_group_psd4(&seed)?.to_x_coordinate());
         // Compute the stake index from the hash output.
-        let stake_index = match hash.cast_lossy(LiteralType::U64)? {
+        let stake_index = match hash.downcast_lossy(LiteralType::U64)? {
             Literal::U64(output) => (*output) % total_stake,
             _ => bail!("BFT failed to downcast the hash output to a U64 literal"),
         };
@@ -269,31 +257,14 @@ pub mod test_helpers {
         Committee::<CurrentNetwork>::new(round, members).unwrap()
     }
 
-    /// Samples a random committee for a given round and members.
-    pub fn sample_committee_for_round_and_members(
-        round: u64,
-        members: Vec<Address<CurrentNetwork>>,
-        rng: &mut TestRng,
-    ) -> Committee<CurrentNetwork> {
-        // Sample the members.
-        let mut committee_members = IndexMap::new();
-        for member in members {
-            let is_open = rng.gen();
-            committee_members.insert(member, (2 * MIN_VALIDATOR_STAKE, is_open));
-        }
-        // Return the committee.
-        Committee::<CurrentNetwork>::new(round, committee_members).unwrap()
-    }
-
     /// Samples a random committee.
-    #[allow(clippy::cast_possible_truncation)]
     pub fn sample_committee_custom(num_members: u16, rng: &mut TestRng) -> Committee<CurrentNetwork> {
-        assert!(num_members >= 3);
+        assert!(num_members >= 4);
         // Set the maximum amount staked in the node.
         const MAX_STAKE: u64 = 100_000_000_000_000;
         // Initialize the Exponential distribution.
         let distribution = Exp::new(2.0).unwrap();
-        // Initialize maximum stake range.
+        // Initialize an RNG for the stake.
         let range = (MAX_STAKE - MIN_VALIDATOR_STAKE) as f64;
         // Sample the members.
         let mut members = IndexMap::new();
@@ -380,7 +351,7 @@ mod tests {
         // Set the number of rounds.
         const NUM_ROUNDS: u64 = 256 * 2_000;
         // Sample the number of members.
-        let num_members = rng.gen_range(3..50);
+        let num_members = rng.gen_range(4..50);
         // Sample a committee.
         let committee = crate::test_helpers::sample_committee_custom(num_members, rng);
         // Check the leader distribution.
@@ -408,13 +379,5 @@ mod tests {
                 assert!(address1.to_x_coordinate() > address2.to_x_coordinate());
             }
         }
-    }
-
-    #[test]
-    fn test_maximum_committee_size() {
-        assert_eq!(
-            Committee::<CurrentNetwork>::MAX_COMMITTEE_SIZE as usize,
-            ledger_narwhal_batch_header::BatchHeader::<CurrentNetwork>::MAX_CERTIFICATES
-        );
     }
 }

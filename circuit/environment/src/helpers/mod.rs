@@ -21,6 +21,9 @@ pub use circuit_type::*;
 pub mod constraint;
 pub use constraint::*;
 
+pub(crate) mod lookup_constraint;
+pub(crate) use lookup_constraint::*;
+
 pub(super) mod converter;
 
 pub mod count;
@@ -40,6 +43,3 @@ pub use variable::*;
 
 pub mod r1cs;
 pub use r1cs::*;
-
-pub mod updatable_count;
-pub use updatable_count::*;

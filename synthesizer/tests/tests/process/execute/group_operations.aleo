@@ -1,17 +1,13 @@
 /*
 randomness: 54321
 cases:
-  - program: group_operations.aleo
-    function: generator
+  - function: generator
     inputs: [1scalar]
-  - program: group_operations.aleo
-    function: generator
+  - function: generator
     inputs: [2scalar]
-  - program: group_operations.aleo
-    function: generator
+  - function: generator
     inputs: [3scalar]
-  - program: group_operations.aleo
-    function: constant_ops
+  - function: constant_ops
     inputs: []
 */
 

@@ -15,17 +15,16 @@
 use crate::*;
 use snarkvm_fields::PrimeField;
 
-use std::{mem, rc::Rc};
-
 #[derive(Debug, Default)]
 pub(crate) struct Counter<F: PrimeField> {
     scope: Scope,
-    constraints: Vec<Rc<Constraint<F>>>,
+    constraints: Vec<Constraint<F>>,
     constants: u64,
+    lookup_constraints: Vec<LookupConstraint<F>>,
     public: u64,
     private: u64,
     nonzeros: (u64, u64, u64),
-    parents: Vec<(Scope, Vec<Rc<Constraint<F>>>, u64, u64, u64, (u64, u64, u64))>,
+    parents: Vec<(Scope, Vec<Constraint<F>>, Vec<LookupConstraint<F>>, u64, u64, u64, (u64, u64, u64))>,
 }
 
 impl<F: PrimeField> Counter<F> {
@@ -44,7 +43,8 @@ impl<F: PrimeField> Counter<F> {
                 // Save the current scope members.
                 self.parents.push((
                     self.scope.clone(),
-                    mem::take(&mut self.constraints),
+                    self.constraints.clone(),
+                    self.lookup_constraints.clone(),
                     self.constants,
                     self.public,
                     self.private,
@@ -53,6 +53,8 @@ impl<F: PrimeField> Counter<F> {
 
                 // Initialize the new scope members.
                 self.scope = scope;
+                self.constraints = Default::default();
+                self.lookup_constraints = Default::default();
                 self.constants = 0;
                 self.public = 0;
                 self.private = 0;
@@ -74,9 +76,12 @@ impl<F: PrimeField> Counter<F> {
         // Ensure the current scope is the last pushed scope.
         match current_scope == name.into() {
             true => {
-                if let Some((scope, constraints, constants, public, private, nonzeros)) = self.parents.pop() {
+                if let Some((scope, constraints, lookup_constraints, constants, public, private, nonzeros)) =
+                    self.parents.pop()
+                {
                     self.scope = scope;
                     self.constraints = constraints;
+                    self.lookup_constraints = lookup_constraints;
                     self.constants = constants;
                     self.public = public;
                     self.private = private;
@@ -92,7 +97,7 @@ impl<F: PrimeField> Counter<F> {
     }
 
     /// Increments the number of constraints by 1.
-    pub(crate) fn add_constraint(&mut self, constraint: Rc<Constraint<F>>) {
+    pub(crate) fn add_constraint(&mut self, constraint: Constraint<F>) {
         let (a_nonzeros, b_nonzeros, c_nonzeros) = constraint.num_nonzeros();
         self.nonzeros.0 += a_nonzeros;
         self.nonzeros.1 += b_nonzeros;
@@ -101,9 +106,21 @@ impl<F: PrimeField> Counter<F> {
         self.constraints.push(constraint);
     }
 
+    /// Increments the number of lookup constraints by 1.
+    pub(crate) fn add_lookup_constraint(&mut self, constraint: LookupConstraint<F>) {
+        let (a_nonzeros, b_nonzeros, c_nonzeros) = constraint.num_nonzeros();
+        self.nonzeros.0 += a_nonzeros;
+        self.nonzeros.1 += b_nonzeros;
+        self.nonzeros.2 += c_nonzeros;
+
+        self.lookup_constraints.push(constraint);
+    }
+
     /// Returns `true` if all constraints in the scope are satisfied.
     pub(crate) fn is_satisfied_in_scope(&self) -> bool {
-        self.constraints.iter().all(|constraint| constraint.is_satisfied())
+        let constraints_satisfied = self.constraints.iter().all(|constraint| constraint.is_satisfied());
+        let lookups_satisfied = self.lookup_constraints.iter().all(|constraint| constraint.is_satisfied());
+        constraints_satisfied && lookups_satisfied
     }
 
     /// Returns the current scope.
@@ -144,6 +161,11 @@ impl<F: PrimeField> Counter<F> {
     /// Returns the number of constraints in scope.
     pub(crate) fn num_constraints_in_scope(&self) -> u64 {
         self.constraints.len() as u64
+    }
+
+    /// Returns the number of lookup constraints in scope.
+    pub(crate) fn num_lookup_constraints_in_scope(&self) -> u64 {
+        self.lookup_constraints.len() as u64
     }
 
     /// Returns the number of nonzeros in scope.

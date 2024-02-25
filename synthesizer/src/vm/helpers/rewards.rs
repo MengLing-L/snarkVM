@@ -127,7 +127,7 @@ pub fn proving_rewards<N: Network>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use console::prelude::TestRng;
+    use console::{prelude::TestRng, types::Group};
 
     use indexmap::indexmap;
 
@@ -169,7 +169,7 @@ mod tests {
         // Sample a committee.
         let committee = ledger_committee::test_helpers::sample_committee_for_round_and_size(1, 100, rng);
         // Convert the committee into stakers.
-        let stakers = crate::committee::test_helpers::to_stakers(committee.members(), rng);
+        let stakers = crate::committee::test_helpers::to_stakers(committee.members());
 
         // Start a timer.
         let timer = std::time::Instant::now();
@@ -256,7 +256,7 @@ mod tests {
 
         for _ in 0..ITERATIONS {
             // Sample a random address.
-            let address = Address::rand(rng);
+            let address = Address::new(Group::rand(rng));
             // Sample a random puzzle reward.
             let puzzle_reward = rng.gen_range(0..MAX_COINBASE_REWARD);
 
@@ -275,7 +275,7 @@ mod tests {
         // Ensure a proving reward that is too large, renders no rewards.
         for _ in 0..ITERATIONS {
             // Sample a random address.
-            let address = Address::rand(rng);
+            let address = Address::new(Group::rand(rng));
             // Sample a random overly-large puzzle reward.
             let puzzle_reward = rng.gen_range(MAX_COINBASE_REWARD..u64::MAX);
             // Sample a random proof target.
@@ -290,7 +290,7 @@ mod tests {
     fn test_proving_rewards_is_empty() {
         let rng = &mut TestRng::default();
         // Sample a random address.
-        let address = Address::rand(rng);
+        let address = Address::new(Group::rand(rng));
 
         // Compute the proving rewards (empty).
         let rewards = proving_rewards::<CurrentNetwork>(vec![], rng.gen());

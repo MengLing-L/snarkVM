@@ -40,7 +40,7 @@ mod tests {
 
         for i in 0..ITERATIONS {
             // Sample a random element.
-            let expected = Address::<CurrentEnvironment>::rand(&mut rng);
+            let expected = Address::<CurrentEnvironment>::new(Uniform::rand(&mut rng));
 
             let given_bits = expected.to_bits_le();
             assert_eq!(Address::<CurrentEnvironment>::size_in_bits(), given_bits.len());
@@ -49,7 +49,7 @@ mod tests {
             assert_eq!(expected, candidate);
 
             // Add excess zero bits.
-            let candidate = [given_bits, vec![false; i]].concat();
+            let candidate = vec![given_bits, vec![false; i]].concat();
 
             let candidate = Address::<CurrentEnvironment>::from_bits_le(&candidate)?;
             assert_eq!(expected, candidate);
@@ -63,7 +63,7 @@ mod tests {
 
         for i in 0..ITERATIONS {
             // Sample a random element.
-            let expected = Address::<CurrentEnvironment>::rand(&mut rng);
+            let expected = Address::<CurrentEnvironment>::new(Uniform::rand(&mut rng));
 
             let given_bits = expected.to_bits_be();
             assert_eq!(Address::<CurrentEnvironment>::size_in_bits(), given_bits.len());
@@ -72,7 +72,7 @@ mod tests {
             assert_eq!(expected, candidate);
 
             // Add excess zero bits.
-            let candidate = [vec![false; i], given_bits].concat();
+            let candidate = vec![vec![false; i], given_bits].concat();
 
             let candidate = Address::<CurrentEnvironment>::from_bits_be(&candidate)?;
             assert_eq!(expected, candidate);

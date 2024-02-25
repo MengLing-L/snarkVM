@@ -23,16 +23,16 @@ use crate::{
         SNARKMode,
     },
 };
-use snarkvm_fields::PrimeField;
-use snarkvm_utilities::{cfg_par_bridge, cfg_reduce};
 
+use crate::{cfg_par_bridge, cfg_reduce};
 use itertools::Itertools;
 use rand_core::RngCore;
+use snarkvm_fields::PrimeField;
 
 #[cfg(not(feature = "serial"))]
 use rayon::prelude::*;
 
-impl<F: PrimeField, SM: SNARKMode> AHPForR1CS<F, SM> {
+impl<F: PrimeField, MM: SNARKMode> AHPForR1CS<F, MM> {
     /// Output the number of oracles sent by the prover in this round.
     pub const fn num_fifth_round_oracles() -> usize {
         1
@@ -41,18 +41,14 @@ impl<F: PrimeField, SM: SNARKMode> AHPForR1CS<F, SM> {
     /// Output the fifth round message and the next state.
     pub fn prover_fifth_round<R: RngCore>(
         verifier_message: verifier::FourthMessage<F>,
-        state: prover::State<'_, F, SM>,
+        state: prover::State<'_, F, MM>,
         _r: &mut R,
     ) -> Result<prover::FifthOracles<F>, AHPError> {
-        let round_time = start_timer!(|| "AHP::Prover::FifthRound");
-
         let lhs_sum: DensePolynomial<F> = cfg_reduce!(
-            cfg_par_bridge!(verifier_message.into_iter().zip_eq(state.lhs_polys_into_iter())).map(
-                |(delta, mut lhs)| {
-                    lhs *= delta;
-                    lhs
-                }
-            ),
+            cfg_par_bridge!(verifier_message.into_iter().zip_eq(state.h_polys_into_iter())).map(|(delta, mut lhs)| {
+                lhs *= delta;
+                lhs
+            }),
             || DensePolynomial::zero(),
             |mut a, mut b| {
                 if b != DensePolynomial::zero() {
@@ -64,8 +60,6 @@ impl<F: PrimeField, SM: SNARKMode> AHPForR1CS<F, SM> {
         let h_2 = LabeledPolynomial::new("h_2", lhs_sum, None, None);
         let oracles = prover::FifthOracles { h_2 };
         assert!(oracles.matches_info(&Self::fifth_round_polynomial_info()));
-
-        end_timer!(round_time);
         Ok(oracles)
     }
 

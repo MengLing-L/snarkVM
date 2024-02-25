@@ -28,8 +28,10 @@ impl<E: Environment> FromBits for Field<E> {
         // Ensure the list of booleans is within the allowed size in bits.
         let num_bits = bits_le.len();
         if num_bits > size_in_bits {
-            // Check that all excess bits are zero.
-            Boolean::assert_bits_are_zero(&bits_le[size_in_bits..])
+            // Check if all excess bits are zero.
+            for bit in bits_le[size_in_bits..].iter() {
+                E::assert_eq(E::zero(), bit);
+            }
         }
 
         // If `num_bits` is greater than `size_in_data_bits`, check it is less than `BaseField::MODULUS`.
@@ -126,7 +128,7 @@ mod tests {
             });
 
             // Add excess zero bits.
-            let candidate = [given_bits, vec![Boolean::new(mode, false); i as usize]].concat();
+            let candidate = vec![given_bits, vec![Boolean::new(mode, false); i as usize]].concat();
 
             Circuit::scope(&format!("Excess {mode} {i}"), || {
                 let candidate = Field::<Circuit>::from_bits_le(&candidate);
@@ -137,12 +139,7 @@ mod tests {
                     // `num_private` gets 1 free excess bit, then is incremented by one for each excess bit.
                     // `num_constraints` is incremented by one for each excess bit.
                     false => {
-                        assert_scope!(
-                            num_constants,
-                            num_public,
-                            num_private,
-                            num_constraints + if i == 0 { 0 } else { 1 }
-                        )
+                        assert_scope!(num_constants, num_public, num_private, num_constraints + i)
                     }
                 };
             });
@@ -171,7 +168,7 @@ mod tests {
             });
 
             // Add excess zero bits.
-            let candidate = [vec![Boolean::new(mode, false); i as usize], given_bits].concat();
+            let candidate = vec![vec![Boolean::new(mode, false); i as usize], given_bits].concat();
 
             Circuit::scope(&format!("Excess {mode} {i}"), || {
                 let candidate = Field::<Circuit>::from_bits_be(&candidate);
@@ -182,12 +179,7 @@ mod tests {
                     // `num_private` gets 1 free excess bit, then is incremented by one for each excess bit.
                     // `num_constraints` is incremented by one for each excess bit.
                     false => {
-                        assert_scope!(
-                            num_constants,
-                            num_public,
-                            num_private,
-                            num_constraints + if i == 0 { 0 } else { 1 }
-                        )
+                        assert_scope!(num_constants, num_public, num_private, num_constraints + i)
                     }
                 };
             });

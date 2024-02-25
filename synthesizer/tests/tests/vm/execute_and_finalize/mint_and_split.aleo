@@ -1,18 +1,12 @@
 /*
 randomness: 1337
-keys:
-  - APrivateKey1zkpFbGDx4znwxo1zrxfUscfGn1Vy3My3ia5gRHx3XwaLtCR
-  - APrivateKey1zkpJhviKDvvm7yu7SZuhSudVR7zjCRG2HznuAHwuGYc1xqN
 cases:
-  - program: mint_and_split.aleo
-    function: mint
+  - function: mint
     inputs: [aleo1j2hfs6yru47h2nvsjdefwtw6nwaj0y4zcl02juyy29txm7nt6y9qln7uhp, 100u64]
-  - program: mint_and_split.aleo
-    function: split
+  - function: split
     inputs: [ "{ owner: aleo1j2hfs6yru47h2nvsjdefwtw6nwaj0y4zcl02juyy29txm7nt6y9qln7uhp.private, microcredits: 100u64.private, _nonce: 0group.public }", 50u64]
     private_key: APrivateKey1zkpFbGDx4znwxo1zrxfUscfGn1Vy3My3ia5gRHx3XwaLtCR
-  - program: mint_and_split.aleo
-    function: split
+  - function: split
     inputs: [ "{ owner: aleo1j2hfs6yru47h2nvsjdefwtw6nwaj0y4zcl02juyy29txm7nt6y9qln7uhp.private, microcredits: 100u64.private, _nonce: 0group.public }", 50u64]
     private_key: APrivateKey1zkpJhviKDvvm7yu7SZuhSudVR7zjCRG2HznuAHwuGYc1xqN
 */

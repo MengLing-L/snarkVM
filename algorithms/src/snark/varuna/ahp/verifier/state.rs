@@ -17,13 +17,14 @@ use core::marker::PhantomData;
 use crate::{
     fft::EvaluationDomain,
     snark::varuna::{
-        ahp::verifier::{FirstMessage, FourthMessage, SecondMessage, ThirdMessage},
+        ahp::verifier::{FifthMessage, FirstMessage, FourthMessage, LookupMessage, SecondMessage, ThirdMessage},
+        BatchSize,
         CircuitId,
         SNARKMode,
     },
 };
 use snarkvm_fields::PrimeField;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 
 #[derive(Debug)]
 /// Circuit Specific State of the Verifier
@@ -36,11 +37,11 @@ pub struct CircuitSpecificState<F: PrimeField> {
     pub(crate) non_zero_c_domain: EvaluationDomain<F>,
 
     /// The number of instances being proved in this batch.
-    pub(in crate::snark::varuna) batch_size: usize,
+    pub(in crate::snark::varuna) batch_size: BatchSize,
 }
 /// State of the AHP verifier.
 #[derive(Debug)]
-pub struct State<F: PrimeField, SM: SNARKMode> {
+pub struct State<F: PrimeField, MM: SNARKMode> {
     /// The state for each circuit in the batch.
     pub(crate) circuit_specific_states: BTreeMap<CircuitId, CircuitSpecificState<F>>,
     /// The largest constraint domain of all circuits in the batch.
@@ -52,6 +53,8 @@ pub struct State<F: PrimeField, SM: SNARKMode> {
 
     /// The verifier message in the first round of the AHP
     pub(crate) first_round_message: Option<FirstMessage<F>>,
+    /// The verifier message in the lookup round of the AHP
+    pub(crate) lookup_round_message: Option<LookupMessage<F>>,
     /// The verifier message in the second round of the AHP
     pub(crate) second_round_message: Option<SecondMessage<F>>,
     /// The verifier message in the third round of the AHP
@@ -59,23 +62,6 @@ pub struct State<F: PrimeField, SM: SNARKMode> {
     /// The verifier message in the fourth round of the AHP
     pub(crate) fourth_round_message: Option<FourthMessage<F>>,
     /// The verifier's random challenge in the last round of the AHP
-    pub(crate) gamma: Option<F>,
-    pub(crate) mode: PhantomData<SM>,
-}
-
-impl<F: PrimeField, MM: SNARKMode> State<F, MM> {
-    pub(crate) fn constraint_domains(&self) -> HashSet<EvaluationDomain<F>> {
-        self.circuit_specific_states.values().map(|s| s.constraint_domain).collect()
-    }
-
-    pub(crate) fn variable_domains(&self) -> HashSet<EvaluationDomain<F>> {
-        self.circuit_specific_states.values().map(|s| s.variable_domain).collect()
-    }
-
-    pub(crate) fn non_zero_domains(&self) -> HashSet<EvaluationDomain<F>> {
-        self.circuit_specific_states
-            .values()
-            .flat_map(|s| [s.non_zero_a_domain, s.non_zero_b_domain, s.non_zero_c_domain])
-            .collect()
-    }
+    pub(crate) fifth_round_message: Option<FifthMessage<F>>,
+    pub(crate) mode: PhantomData<MM>,
 }

@@ -1,8 +1,7 @@
 program too_many_positions.aleo;
 
 function foo:
-    async foo into r0;
-    output r0 as too_many_positions.aleo/foo.future;
+    finalize;
 
 finalize foo:
     position one;

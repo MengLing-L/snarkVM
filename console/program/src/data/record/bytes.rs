@@ -29,8 +29,7 @@ impl<N: Network, Private: Visibility> FromBytes for Record<N, Private> {
             // Read the entry value (in 2 steps to prevent infinite recursion).
             let num_bytes = u16::read_le(&mut reader)?;
             // Read the entry bytes.
-            let mut bytes = Vec::new();
-            (&mut reader).take(num_bytes as u64).read_to_end(&mut bytes)?;
+            let bytes = (0..num_bytes).map(|_| u8::read_le(&mut reader)).collect::<Result<Vec<_>, _>>()?;
             // Recover the entry value.
             let entry = Entry::read_le(&mut bytes.as_slice())?;
             // Add the entry.
@@ -96,6 +95,7 @@ mod tests {
         // Check the byte representation.
         let expected_bytes = expected.to_bytes_le()?;
         assert_eq!(expected, Record::read_le(&expected_bytes[..])?);
+        assert!(Record::<CurrentNetwork, Plaintext<CurrentNetwork>>::read_le(&expected_bytes[1..]).is_err());
         Ok(())
     }
 }

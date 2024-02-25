@@ -12,15 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::sync::Arc;
-
 use crate::{FinalizeGlobalState, Function, Operand, Program};
 use console::{
-    account::Group,
     network::Network,
     prelude::{bail, Result},
     program::{
-        Future,
         Identifier,
         Literal,
         Locator,
@@ -36,7 +32,6 @@ use console::{
     },
     types::{Address, Field},
 };
-use rand::{CryptoRng, Rng};
 
 pub trait StackMatches<N: Network> {
     /// Checks that the given value matches the layout of the value type.
@@ -53,9 +48,6 @@ pub trait StackMatches<N: Network> {
 
     /// Checks that the given plaintext matches the layout of the plaintext type.
     fn matches_plaintext(&self, plaintext: &Plaintext<N>, plaintext_type: &PlaintextType<N>) -> Result<()>;
-
-    /// Checks that the given future matches the layout of the future type.
-    fn matches_future(&self, future: &Future<N>, locator: &Locator<N>) -> Result<()>;
 }
 
 pub trait StackProgram<N: Network> {
@@ -69,39 +61,19 @@ pub trait StackProgram<N: Network> {
     fn contains_external_record(&self, locator: &Locator<N>) -> bool;
 
     /// Returns the external stack for the given program ID.
-    fn get_external_stack(&self, program_id: &ProgramID<N>) -> Result<&Arc<Self>>;
+    fn get_external_stack(&self, program_id: &ProgramID<N>) -> Result<&Self>;
 
     /// Returns the external program for the given program ID.
     fn get_external_program(&self, program_id: &ProgramID<N>) -> Result<&Program<N>>;
 
     /// Returns `true` if the stack contains the external record.
-    fn get_external_record(&self, locator: &Locator<N>) -> Result<&RecordType<N>>;
+    fn get_external_record(&self, locator: &Locator<N>) -> Result<RecordType<N>>;
 
     /// Returns the function with the given function name.
     fn get_function(&self, function_name: &Identifier<N>) -> Result<Function<N>>;
 
-    /// Returns a reference to the function with the given function name.
-    fn get_function_ref(&self, function_name: &Identifier<N>) -> Result<&Function<N>>;
-
     /// Returns the expected number of calls for the given function name.
     fn get_number_of_calls(&self, function_name: &Identifier<N>) -> Result<usize>;
-
-    /// Samples a value for the given value_type.
-    fn sample_value<R: Rng + CryptoRng>(
-        &self,
-        burner_address: &Address<N>,
-        value_type: &ValueType<N>,
-        rng: &mut R,
-    ) -> Result<Value<N>>;
-
-    /// Returns a record for the given record name, with the given burner address and nonce.
-    fn sample_record<R: Rng + CryptoRng>(
-        &self,
-        burner_address: &Address<N>,
-        record_name: &Identifier<N>,
-        record_nonce: Group<N>,
-        rng: &mut R,
-    ) -> Result<Record<N, Plaintext<N>>>;
 }
 
 pub trait FinalizeRegistersState<N: Network> {
@@ -115,13 +87,7 @@ pub trait FinalizeRegistersState<N: Network> {
     fn function_name(&self) -> &Identifier<N>;
 }
 
-pub trait RegistersSigner<N: Network> {
-    /// Returns the transition signer.
-    fn signer(&self) -> Result<Address<N>>;
-
-    /// Sets the transition signer.
-    fn set_signer(&mut self, signer: Address<N>);
-
+pub trait RegistersCaller<N: Network> {
     /// Returns the transition caller.
     fn caller(&self) -> Result<Address<N>>;
 
@@ -135,13 +101,7 @@ pub trait RegistersSigner<N: Network> {
     fn set_tvk(&mut self, tvk: Field<N>);
 }
 
-pub trait RegistersSignerCircuit<N: Network, A: circuit::Aleo<Network = N>> {
-    /// Returns the transition signer, as a circuit.
-    fn signer_circuit(&self) -> Result<circuit::Address<A>>;
-
-    /// Sets the transition signer, as a circuit.
-    fn set_signer_circuit(&mut self, signer_circuit: circuit::Address<A>);
-
+pub trait RegistersCallerCircuit<N: Network, A: circuit::Aleo<Network = N>> {
     /// Returns the transition caller, as a circuit.
     fn caller_circuit(&self) -> Result<circuit::Address<A>>;
 
@@ -177,12 +137,8 @@ pub trait RegistersLoad<N: Network> {
     ) -> Result<Literal<N>> {
         match self.load(stack, operand)? {
             Value::Plaintext(Plaintext::Literal(literal, ..)) => Ok(literal),
-            Value::Plaintext(Plaintext::Struct(..))
-            | Value::Plaintext(Plaintext::Array(..))
-            | Value::Record(..)
-            | Value::Future(..) => {
-                bail!("Operand must be a literal")
-            }
+            Value::Plaintext(Plaintext::Struct(..)) => bail!("Operand must be a literal"),
+            Value::Record(..) => bail!("Operand must be a literal"),
         }
     }
 
@@ -200,7 +156,7 @@ pub trait RegistersLoad<N: Network> {
     ) -> Result<Plaintext<N>> {
         match self.load(stack, operand)? {
             Value::Plaintext(plaintext) => Ok(plaintext),
-            Value::Record(..) | Value::Future(..) => bail!("Operand must be a plaintext"),
+            Value::Record(..) => bail!("Operand must be a plaintext"),
         }
     }
 }
@@ -231,10 +187,8 @@ pub trait RegistersLoadCircuit<N: Network, A: circuit::Aleo<Network = N>> {
     ) -> Result<circuit::Literal<A>> {
         match self.load_circuit(stack, operand)? {
             circuit::Value::Plaintext(circuit::Plaintext::Literal(literal, ..)) => Ok(literal),
-            circuit::Value::Plaintext(circuit::Plaintext::Struct(..))
-            | circuit::Value::Plaintext(circuit::Plaintext::Array(..))
-            | circuit::Value::Record(..)
-            | circuit::Value::Future(..) => bail!("Operand must be a literal"),
+            circuit::Value::Plaintext(circuit::Plaintext::Struct(..)) => bail!("Operand must be a literal"),
+            circuit::Value::Record(..) => bail!("Operand must be a literal"),
         }
     }
 
@@ -252,7 +206,7 @@ pub trait RegistersLoadCircuit<N: Network, A: circuit::Aleo<Network = N>> {
     ) -> Result<circuit::Plaintext<A>> {
         match self.load_circuit(stack, operand)? {
             circuit::Value::Plaintext(plaintext) => Ok(plaintext),
-            circuit::Value::Record(..) | circuit::Value::Future(..) => bail!("Operand must be a plaintext"),
+            circuit::Value::Record(..) => bail!("Operand must be a plaintext"),
         }
     }
 }

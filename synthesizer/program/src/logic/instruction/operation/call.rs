@@ -227,7 +227,7 @@ impl<N: Network> Call<N> {
                 bail!("Expected {} outputs, found {}", closure.outputs().len(), self.destinations.len())
             }
             // Return the output register types.
-            Ok(closure.outputs().iter().map(|output| output.register_type()).cloned().collect())
+            Ok(closure.outputs().iter().map(|output| *output.register_type()).collect())
         }
         // If the operator is a function, retrieve the function and compute the output types.
         else if let Ok(function) = program.get_function(resource) {
@@ -253,7 +253,7 @@ impl<N: Network> Call<N> {
                         &format!("{}/{}", program.id(), record_name),
                     )?)),
                     // Else, return the register type.
-                    (_, output_type) => Ok(RegisterType::from(output_type)),
+                    (_, _) => Ok(RegisterType::from(output_type)),
                 })
                 .collect::<Result<Vec<_>>>()
         }
@@ -313,7 +313,7 @@ impl<N: Network> Parser for Call<N> {
                 let (string, _) = Sanitizer::parse_whitespaces(string)?;
                 // Parse the destinations from the string.
                 let (string, destinations) =
-                    map_res(many1(complete(parse_destination)), |destinations: Vec<Register<N>>| {
+                    map_res(many0(complete(parse_destination)), |destinations: Vec<Register<N>>| {
                         // Ensure the number of destinations is within the bounds.
                         match destinations.len() <= N::MAX_OPERANDS {
                             true => Ok(destinations),
@@ -544,6 +544,7 @@ mod tests {
             // Check the byte representation.
             let expected_bytes = expected.to_bytes_le().unwrap();
             assert_eq!(expected, Call::read_le(&expected_bytes[..]).unwrap());
+            assert!(Call::<CurrentNetwork>::read_le(&expected_bytes[1..]).is_err());
         }
     }
 }

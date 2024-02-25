@@ -67,8 +67,6 @@ mod tests {
         "passport",
         "object",
         "array",
-        // Future
-        "future",
     ];
 
     fn check_serde_json<

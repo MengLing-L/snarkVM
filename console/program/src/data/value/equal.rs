@@ -31,8 +31,7 @@ impl<N: Network> Equal<Self> for Value<N> {
         match (self, other) {
             (Self::Plaintext(a), Self::Plaintext(b)) => a.is_equal(b),
             (Self::Record(a), Self::Record(b)) => a.is_equal(b),
-            (Self::Future(a), Self::Future(b)) => a.is_equal(b),
-            (Self::Plaintext(..), _) | (Self::Record(..), _) | (Self::Future(..), _) => Boolean::new(false),
+            (Self::Plaintext(..), _) | (Self::Record(..), _) => Boolean::new(false),
         }
     }
 
@@ -41,8 +40,7 @@ impl<N: Network> Equal<Self> for Value<N> {
         match (self, other) {
             (Self::Plaintext(a), Self::Plaintext(b)) => a.is_not_equal(b),
             (Self::Record(a), Self::Record(b)) => a.is_not_equal(b),
-            (Self::Future(a), Self::Future(b)) => a.is_not_equal(b),
-            (Self::Plaintext(..), _) | (Self::Record(..), _) | (Self::Future(..), _) => Boolean::new(true),
+            (Self::Plaintext(..), _) | (Self::Record(..), _) => Boolean::new(true),
         }
     }
 }

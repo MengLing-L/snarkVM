@@ -29,7 +29,6 @@ impl<N: Network> Value<N> {
                     Entry::Private(plaintext) => Ok(Self::Plaintext(plaintext)),
                 }
             }
-            Self::Future(future) => Ok(future.find(path)?),
         }
     }
 }

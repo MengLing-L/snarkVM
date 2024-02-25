@@ -18,7 +18,6 @@ mod from_bits;
 mod parse;
 mod serialize;
 mod size_in_bits;
-mod size_in_bytes;
 mod to_bits;
 mod to_fields;
 mod verify;
@@ -86,28 +85,6 @@ impl<N: Network> TypeName for Signature<N> {
     #[inline]
     fn type_name() -> &'static str {
         "signature"
-    }
-}
-
-impl<N: Network> Signature<N> {
-    /// Initializes a `zero` signature.
-    #[cfg(any(test, feature = "test"))]
-    pub fn zero() -> Self {
-        Self::from((
-            Scalar::zero(),
-            Scalar::zero(),
-            ComputeKey::try_from((crate::Group::zero(), crate::Group::zero())).unwrap(),
-        ))
-    }
-
-    /// Initializes a "random" signature.
-    #[cfg(any(test, feature = "test"))]
-    pub fn rand<R: Rng>(rng: &mut R) -> Self {
-        Self::from((
-            Scalar::rand(rng),
-            Scalar::rand(rng),
-            ComputeKey::try_from((crate::Group::rand(rng), crate::Group::rand(rng))).unwrap(),
-        ))
     }
 }
 

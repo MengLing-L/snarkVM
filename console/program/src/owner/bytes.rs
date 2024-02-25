@@ -20,7 +20,7 @@ impl<N: Network> FromBytes for ProgramOwner<N> {
         // Read the version.
         let version = u8::read_le(&mut reader)?;
         // Ensure the version is valid.
-        if version != 1 {
+        if version != 0 {
             return Err(error("Invalid program owner version"));
         }
 
@@ -38,7 +38,7 @@ impl<N: Network> ToBytes for ProgramOwner<N> {
     /// Writes the program owner to a buffer.
     fn write_le<W: Write>(&self, mut writer: W) -> IoResult<()> {
         // Write the version.
-        1u8.write_le(&mut writer)?;
+        0u8.write_le(&mut writer)?;
         // Write the address.
         self.address.write_le(&mut writer)?;
         // Write the signature.

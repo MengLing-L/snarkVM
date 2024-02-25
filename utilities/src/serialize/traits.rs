@@ -12,8 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub use crate::io::{Read, Write};
 use crate::SerializationError;
+pub use crate::{
+    io::{self, Read, Write},
+    FromBytes,
+    ToBytes,
+    Vec,
+};
 
 use serde::de::{self, DeserializeOwned, Deserializer};
 

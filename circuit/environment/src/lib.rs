@@ -29,7 +29,6 @@ pub mod helpers;
 pub use helpers::*;
 
 pub mod macros;
-#[allow(unused_imports)]
 pub use macros::*;
 
 pub mod traits;
@@ -38,8 +37,6 @@ pub use traits::*;
 pub mod prelude {
     pub use crate::{
         count,
-        count_is,
-        count_less_than,
         output_mode,
         rename_selfs,
         traits::*,

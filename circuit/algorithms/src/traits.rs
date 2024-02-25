@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use snarkvm_circuit_types::environment::{Eject, GroupTrait, Inject, ScalarTrait, ToBits};
+use snarkvm_circuit_types::environment::{Eject, GroupTrait, Inject, ScalarTrait, Ternary, ToBits};
 
 /// A trait for a commitment scheme.
 pub trait Commit {
@@ -37,7 +37,7 @@ pub trait CommitUncompressed {
 /// A trait for a hash function.
 pub trait Hash {
     type Input: Inject + Eject + Clone;
-    type Output: Inject + Eject + ToBits + Clone;
+    type Output: Inject + Eject + Ternary<Output = Self::Output> + ToBits + Clone;
 
     /// Returns the hash of the given input.
     fn hash(&self, input: &[Self::Input]) -> Self::Output;
@@ -78,6 +78,16 @@ pub trait HashUncompressed {
 
     /// Returns the hash of the given input.
     fn hash_uncompressed(&self, input: &[Self::Input]) -> Self::Output;
+}
+
+/// A trait for a signature verification.
+pub trait Verify {
+    type Input;
+    type Output;
+
+    // TODO: probably more consistent to return a boolean for success/failure
+    /// Verifies the signature.
+    fn verify(&self, input: &[Self::Input]) -> Self::Output;
 }
 
 /// A trait for a pseudorandom function.

@@ -115,8 +115,7 @@ impl<N: Network> Input<N> {
                         // Construct the (console) input index as a field element.
                         let index = Field::from_u16(index as u16);
                         // Construct the preimage as `(function ID || input || tcm || index)`.
-                        let mut preimage = Vec::new();
-                        preimage.push(function_id);
+                        let mut preimage = vec![function_id];
                         preimage.extend(fields);
                         preimage.push(*tcm);
                         preimage.push(index);
@@ -135,8 +134,7 @@ impl<N: Network> Input<N> {
                         // Construct the (console) input index as a field element.
                         let index = Field::from_u16(index as u16);
                         // Construct the preimage as `(function ID || input || tcm || index)`.
-                        let mut preimage = Vec::new();
-                        preimage.push(function_id);
+                        let mut preimage = vec![function_id];
                         preimage.extend(fields);
                         preimage.push(*tcm);
                         preimage.push(index);
@@ -200,8 +198,7 @@ pub(crate) mod test_helpers {
         let plaintext = Plaintext::Literal(Literal::Field(Uniform::rand(rng)), Default::default());
         let plaintext_hash = CurrentNetwork::hash_bhp1024(&plaintext.to_bits_le()).unwrap();
         // Sample a random ciphertext.
-        let fields: Vec<_> = (0..10).map(|_| Uniform::rand(rng)).collect();
-        let ciphertext = Ciphertext::from_fields(&fields).unwrap();
+        let ciphertext = Ciphertext::from_fields(&vec![Uniform::rand(rng); 10]).unwrap();
         let ciphertext_hash = CurrentNetwork::hash_bhp1024(&ciphertext.to_bits_le()).unwrap();
 
         vec![

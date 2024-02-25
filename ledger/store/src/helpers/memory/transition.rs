@@ -15,11 +15,9 @@
 use crate::{helpers::memory::MemoryMap, InputStorage, InputStore, OutputStorage, OutputStore, TransitionStorage};
 use console::{
     prelude::*,
-    program::{Ciphertext, Future, Identifier, Plaintext, ProgramID, Record},
+    program::{Ciphertext, Identifier, Plaintext, ProgramID, Record, Value},
     types::{Field, Group},
 };
-
-use aleo_std_storage::StorageMode;
 
 /// An in-memory transition storage.
 #[derive(Clone)]
@@ -30,6 +28,8 @@ pub struct TransitionMemory<N: Network> {
     input_store: InputStore<N, InputMemory<N>>,
     /// The transition output store.
     output_store: OutputStore<N, OutputMemory<N>>,
+    /// The transition finalize inputs.
+    finalize_map: MemoryMap<N::TransitionID, Option<Vec<Value<N>>>>,
     /// The transition public keys.
     tpk_map: MemoryMap<N::TransitionID, Group<N>>,
     /// The reverse `tpk` map.
@@ -45,17 +45,19 @@ impl<N: Network> TransitionStorage<N> for TransitionMemory<N> {
     type LocatorMap = MemoryMap<N::TransitionID, (ProgramID<N>, Identifier<N>)>;
     type InputStorage = InputMemory<N>;
     type OutputStorage = OutputMemory<N>;
+    type FinalizeMap = MemoryMap<N::TransitionID, Option<Vec<Value<N>>>>;
     type TPKMap = MemoryMap<N::TransitionID, Group<N>>;
     type ReverseTPKMap = MemoryMap<Group<N>, N::TransitionID>;
     type TCMMap = MemoryMap<N::TransitionID, Field<N>>;
     type ReverseTCMMap = MemoryMap<Field<N>, N::TransitionID>;
 
     /// Initializes the transition storage.
-    fn open<S: Clone + Into<StorageMode>>(storage: S) -> Result<Self> {
+    fn open(dev: Option<u16>) -> Result<Self> {
         Ok(Self {
             locator_map: MemoryMap::default(),
-            input_store: InputStore::open(storage.clone())?,
-            output_store: OutputStore::open(storage)?,
+            input_store: InputStore::open(dev)?,
+            output_store: OutputStore::open(dev)?,
+            finalize_map: MemoryMap::default(),
             tpk_map: MemoryMap::default(),
             reverse_tpk_map: MemoryMap::default(),
             tcm_map: MemoryMap::default(),
@@ -76,6 +78,11 @@ impl<N: Network> TransitionStorage<N> for TransitionMemory<N> {
     /// Returns the transition output store.
     fn output_store(&self) -> &OutputStore<N, Self::OutputStorage> {
         &self.output_store
+    }
+
+    /// Returns the transition finalize inputs.
+    fn finalize_map(&self) -> &Self::FinalizeMap {
+        &self.finalize_map
     }
 
     /// Returns the transition public keys.
@@ -118,8 +125,8 @@ pub struct InputMemory<N: Network> {
     record_tag: MemoryMap<Field<N>, Field<N>>,
     /// The mapping of `external hash` to `()`. Note: This is **not** the record commitment.
     external_record: MemoryMap<Field<N>, ()>,
-    /// The storage mode.
-    storage_mode: StorageMode,
+    /// The optional development ID.
+    dev: Option<u16>,
 }
 
 #[rustfmt::skip]
@@ -134,7 +141,7 @@ impl<N: Network> InputStorage<N> for InputMemory<N> {
     type ExternalRecordMap = MemoryMap<Field<N>, ()>;
 
     /// Initializes the transition input storage.
-    fn open<S: Clone + Into<StorageMode>>(storage: S) -> Result<Self> {
+    fn open(dev: Option<u16>) -> Result<Self> {
         Ok(Self {
             id_map: MemoryMap::default(),
             reverse_id_map: MemoryMap::default(),
@@ -144,7 +151,7 @@ impl<N: Network> InputStorage<N> for InputMemory<N> {
             record: MemoryMap::default(),
             record_tag: MemoryMap::default(),
             external_record: MemoryMap::default(),
-            storage_mode: storage.into(),
+            dev,
         })
     }
 
@@ -188,9 +195,9 @@ impl<N: Network> InputStorage<N> for InputMemory<N> {
         &self.external_record
     }
 
-    /// Returns the storage mode.
-    fn storage_mode(&self) -> &StorageMode {
-        &self.storage_mode
+    /// Returns the optional development ID.
+    fn dev(&self) -> Option<u16> {
+        self.dev
     }
 }
 
@@ -214,10 +221,8 @@ pub struct OutputMemory<N: Network> {
     record_nonce: MemoryMap<Group<N>, Field<N>>,
     /// The mapping of `external hash` to `()`. Note: This is **not** the record commitment.
     external_record: MemoryMap<Field<N>, ()>,
-    /// The mapping of `future hash` to `(optional) future`.
-    future: MemoryMap<Field<N>, Option<Future<N>>>,
-    /// The storage mode.
-    storage_mode: StorageMode,
+    /// The optional development ID.
+    dev: Option<u16>,
 }
 
 #[rustfmt::skip]
@@ -230,10 +235,9 @@ impl<N: Network> OutputStorage<N> for OutputMemory<N> {
     type RecordMap = MemoryMap<Field<N>, (Field<N>, Option<Record<N, Ciphertext<N>>>)>;
     type RecordNonceMap = MemoryMap<Group<N>, Field<N>>;
     type ExternalRecordMap = MemoryMap<Field<N>, ()>;
-    type FutureMap = MemoryMap<Field<N>, Option<Future<N>>>;
 
     /// Initializes the transition output storage.
-    fn open<S: Clone + Into<StorageMode>>(storage: S) -> Result<Self> {
+    fn open(dev: Option<u16>) -> Result<Self> {
         Ok(Self {
             id_map: Default::default(),
             reverse_id_map: Default::default(),
@@ -243,8 +247,7 @@ impl<N: Network> OutputStorage<N> for OutputMemory<N> {
             record: Default::default(),
             record_nonce: Default::default(),
             external_record: Default::default(),
-            future: Default::default(),
-            storage_mode: storage.into(),
+            dev,
         })
     }
 
@@ -288,13 +291,8 @@ impl<N: Network> OutputStorage<N> for OutputMemory<N> {
         &self.external_record
     }
 
-    /// Returns the future map.
-    fn future_map(&self) -> &Self::FutureMap {
-        &self.future
-    }
-
-    /// Returns the storage mode.
-    fn storage_mode(&self) -> &StorageMode {
-        &self.storage_mode
+    /// Returns the optional development ID.
+    fn dev(&self) -> Option<u16> {
+        self.dev
     }
 }

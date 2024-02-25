@@ -36,7 +36,7 @@ pub type Randomness<E> = kzg10::KZGRandomness<E>;
 pub type Commitment<E> = kzg10::KZGCommitment<E>;
 
 /// `CommitterKey` is used to commit to, and create evaluation proofs for, a given polynomial.
-#[derive(Debug)]
+#[derive(Clone, Debug, Default, Hash, CanonicalSerialize, CanonicalDeserialize, PartialEq, Eq)]
 pub struct CommitterKey<E: PairingEngine> {
     /// The key used to commit to polynomials.
     pub powers_of_beta_g: Vec<E::G1Affine>,
@@ -271,7 +271,7 @@ impl<E: PairingEngine> CommitterKey<E> {
 }
 
 /// `CommitterUnionKey` is a union of `CommitterKey`s, useful for multi-circuit batch proofs.
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct CommitterUnionKey<'a, E: PairingEngine> {
     /// The key used to commit to polynomials.
     pub powers_of_beta_g: Option<&'a Vec<E::G1Affine>>,
@@ -523,7 +523,7 @@ impl<B: Borrow<String>> PartialEq<B> for LCTerm {
 pub struct LinearCombination<F> {
     /// The label.
     pub label: String,
-    /// The linear combination of `(poly_label, coeff)` pairs.
+    /// The linear combination of `(coeff, poly_label)` pairs.
     pub terms: BTreeMap<LCTerm, F>,
 }
 
@@ -632,7 +632,7 @@ impl<F: Field> MulAssign<F> for LinearCombination<F> {
 /// that `p[label]` is to be queried at.
 ///
 /// Added the third field: the point name.
-pub type QuerySet<T> = BTreeSet<(String, (String, T))>;
+pub type QuerySet<T> = BTreeSet<(String, (usize, (String, T)))>; // TODO: turn this into a proper struct. query_index can be optional, only for batching
 
 /// `Evaluations` is the result of querying a set of labeled polynomials or equations
 /// `p` at a `QuerySet` `Q`. It maps each element of `Q` to the resulting evaluation.
@@ -647,7 +647,7 @@ pub fn evaluate_query_set<'a, F: PrimeField>(
 ) -> Evaluations<F> {
     let polys: HashMap<_, _> = polys.into_iter().map(|p| (p.label(), p)).collect();
     let mut evaluations = Evaluations::new();
-    for (label, (_point_name, point)) in query_set {
+    for (label, (_index, (_point_name, point))) in query_set {
         let poly = polys.get(label as &str).expect("polynomial in evaluated lc is not found");
         let eval = poly.evaluate(*point);
         evaluations.insert((label.clone(), *point), eval);
@@ -660,6 +660,8 @@ pub fn evaluate_query_set<'a, F: PrimeField>(
 pub struct BatchLCProof<E: PairingEngine> {
     /// Evaluation proof.
     pub proof: BatchProof<E>,
+    /// Evaluations required to verify the proof.
+    pub evaluations: Option<Vec<E::Fr>>,
 }
 
 impl<E: PairingEngine> BatchLCProof<E> {

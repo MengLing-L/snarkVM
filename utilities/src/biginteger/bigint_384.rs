@@ -29,9 +29,8 @@ use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use zeroize::Zeroize;
 
-#[derive(Copy, Clone, PartialEq, Eq, Default, Hash, Zeroize)]
+#[derive(Copy, Clone, PartialEq, Eq, Default, Hash)]
 pub struct BigInteger384(pub [u64; 6]);
 
 impl BigInteger384 {
@@ -262,16 +261,9 @@ impl FromBits for BigInteger384 {
     #[doc = " Returns a `BigInteger` by parsing a slice of bits in big-endian format"]
     #[doc = " and transforms it into a slice of little-endian u64 elements."]
     fn from_bits_be(bits: &[bool]) -> Result<Self> {
-        let mut res = Self::default();
-        for (i, bits64) in bits.rchunks(64).enumerate() {
-            let mut acc: u64 = 0;
-            for bit in bits64.iter() {
-                acc <<= 1;
-                acc += *bit as u64;
-            }
-            res.0[i] = acc;
-        }
-        Ok(res)
+        let mut bits_reversed = bits.to_vec();
+        bits_reversed.reverse();
+        Self::from_bits_le(&bits_reversed)
     }
 }
 impl ToBytes for BigInteger384 {

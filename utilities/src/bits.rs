@@ -14,7 +14,7 @@
 
 use crate::Vec;
 
-use anyhow::{ensure, Result};
+use anyhow::Result;
 
 /// Takes as input a sequence of objects, and converts them to a series of little-endian bits.
 /// All traits that implement `ToBits` can be automatically converted to bits in this manner.
@@ -41,21 +41,16 @@ pub trait ToBits: Sized {
 
     /// Returns `self` as a boolean array in little-endian order.
     fn to_bits_le(&self) -> Vec<bool> {
-        let mut bits = Vec::new();
+        let mut bits = Vec::with_capacity(32);
         self.write_bits_le(&mut bits);
         bits
     }
 
     /// Returns `self` as a boolean array in big-endian order.
     fn to_bits_be(&self) -> Vec<bool> {
-        let mut bits = Vec::new();
+        let mut bits = Vec::with_capacity(32);
         self.write_bits_be(&mut bits);
         bits
-    }
-
-    /// An optional indication of how many bits an object can be represented with.
-    fn num_bits() -> Option<usize> {
-        None
     }
 }
 
@@ -122,24 +117,6 @@ to_bits_tuple!((C0, 0), (C1, 1), (C2, 2), (C3, 3), (C4, 4), (C5, 5), (C6, 6), (C
 to_bits_tuple!((C0, 0), (C1, 1), (C2, 2), (C3, 3), (C4, 4), (C5, 5), (C6, 6), (C7, 7), (C8, 8), (C9, 9), (C10, 10));
 
 /********************/
-/****** Boolean *****/
-/********************/
-
-impl ToBits for bool {
-    /// A helper method to return a concatenated list of little-endian bits.
-    #[inline]
-    fn write_bits_le(&self, vec: &mut Vec<bool>) {
-        vec.push(*self);
-    }
-
-    /// A helper method to return a concatenated list of big-endian bits.
-    #[inline]
-    fn write_bits_be(&self, vec: &mut Vec<bool>) {
-        vec.push(*self);
-    }
-}
-
-/********************/
 /***** Integers *****/
 /********************/
 
@@ -149,6 +126,7 @@ macro_rules! impl_bits_for_integer {
             /// Returns `self` as a boolean array in little-endian order.
             #[inline]
             fn write_bits_le(&self, vec: &mut Vec<bool>) {
+                vec.reserve(<$int>::BITS as usize);
                 let mut value = *self;
                 for _ in 0..<$int>::BITS {
                     vec.push(value & 1 == 1);
@@ -162,23 +140,13 @@ macro_rules! impl_bits_for_integer {
                 let reversed = self.reverse_bits();
                 reversed.write_bits_le(vec);
             }
-
-            fn num_bits() -> Option<usize> {
-                Some(<$int>::BITS as usize)
-            }
         }
 
         impl FromBits for $int {
             /// Reads `Self` from a boolean array in little-endian order.
             #[inline]
             fn from_bits_le(bits: &[bool]) -> Result<Self> {
-                // If the number of bits exceeds the size of the integer, ensure that the upper bits are all zero.
-                // Note that because the input bits are little-endian, these are the bits at the end of slice.
-                for bit in bits.iter().skip(<$int>::BITS as usize) {
-                    ensure!(!bit, "upper bits are not zero");
-                }
-                // Construct the integer from the bits.
-                Ok(bits.iter().take(<$int>::BITS as usize).rev().fold(0, |value, bit| match bit {
+                Ok(bits.iter().rev().fold(0, |value, bit| match bit {
                     true => (value.wrapping_shl(1)) ^ 1,
                     false => (value.wrapping_shl(1)) ^ 0,
                 }))
@@ -187,13 +155,7 @@ macro_rules! impl_bits_for_integer {
             /// Reads `Self` from a boolean array in big-endian order.
             #[inline]
             fn from_bits_be(bits: &[bool]) -> Result<Self> {
-                // If the number of bits exceeds the size of the integer, ensure that the upper bits are all zero.
-                // Note that because the input bits are big-endian, these are the bits at the beginning of slice.
-                for bit in bits.iter().take(bits.len().saturating_sub(<$int>::BITS as usize)) {
-                    ensure!(!bit, "upper bits are not zero");
-                }
-                // Construct the integer from the bits.
-                Ok(bits.iter().skip(bits.len().saturating_sub(<$int>::BITS as usize)).fold(0, |value, bit| match bit {
+                Ok(bits.iter().fold(0, |value, bit| match bit {
                     true => (value.wrapping_shl(1)) ^ 1,
                     false => (value.wrapping_shl(1)) ^ 0,
                 }))
@@ -274,10 +236,6 @@ impl<C: ToBits> ToBits for &[C] {
     /// A helper method to return a concatenated list of little-endian bits.
     #[inline]
     fn write_bits_le(&self, vec: &mut Vec<bool>) {
-        if let Some(num_bits) = C::num_bits() {
-            vec.reserve(num_bits * self.len());
-        }
-
         for elem in self.iter() {
             elem.write_bits_le(vec);
         }
@@ -286,10 +244,6 @@ impl<C: ToBits> ToBits for &[C] {
     /// A helper method to return a concatenated list of big-endian bits.
     #[inline]
     fn write_bits_be(&self, vec: &mut Vec<bool>) {
-        if let Some(num_bits) = C::num_bits() {
-            vec.reserve(num_bits * self.len());
-        }
-
         for elem in self.iter() {
             elem.write_bits_be(vec);
         }

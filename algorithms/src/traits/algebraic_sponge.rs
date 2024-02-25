@@ -45,9 +45,9 @@ pub trait AlgebraicSponge<F: PrimeField, const RATE: usize>: Clone + Debug {
     /// Takes in bytes.
     fn absorb_bytes(&mut self, elements: &[u8]) {
         let capacity = F::size_in_bits() - 1;
-        let mut bits = Vec::<bool>::with_capacity(elements.len() * 8);
+        let mut bits = Vec::<bool>::new();
         for elem in elements {
-            bits.extend_from_slice(&[
+            bits.append(&mut vec![
                 elem & 128 != 0,
                 elem & 64 != 0,
                 elem & 32 != 0,
@@ -97,16 +97,13 @@ pub enum DuplexSpongeMode {
 }
 
 pub(crate) mod nonnative_params {
-    /// A macro for computing ceil(log2(x))+1 for a field element x. The num_bits
-    /// param is expected to be a vector to which the BE bits can be written; it is
-    /// not created here, as reusing it allows us to avoid a lot of allocations.
+    /// A macro for computing ceil(log2(x))+1 for a field element x
     #[macro_export]
     macro_rules! overhead {
-        ($x:expr, $num_bits:expr) => {{
+        ($x:expr) => {{
             use snarkvm_utilities::ToBits;
             let num = $x;
-            let num_bits = $num_bits;
-            num.to_bigint().write_bits_be(num_bits);
+            let num_bits = num.to_bigint().to_bits_be();
             let mut skipped_bits = 0;
             for b in num_bits.iter() {
                 if *b == false {
@@ -123,12 +120,7 @@ pub(crate) mod nonnative_params {
                 }
             }
 
-            let result = if is_power_of_2 { num_bits.len() - skipped_bits } else { num_bits.len() - skipped_bits + 1 };
-
-            // Clear the reusable vector for bits.
-            num_bits.clear();
-
-            result
+            if is_power_of_2 { num_bits.len() - skipped_bits } else { num_bits.len() - skipped_bits + 1 }
         }};
     }
 

@@ -13,35 +13,34 @@
 // limitations under the License.
 
 /// Describes the failure modes of the AHP scheme.
-#[derive(Debug, Error)]
+#[derive(Debug)]
 pub enum AHPError {
-    #[error("{}", _0)]
-    AnyhowError(#[from] anyhow::Error),
-
-    #[error("Batch size was zero; must be at least 1.")]
+    /// Anyhow error
+    Anyhow(anyhow::Error),
+    /// The batch size is zero.
     BatchSizeIsZero,
-
-    #[error("An error occurred during constraint generation.")]
+    /// An error occurred during constraint generation.
     ConstraintSystemError(crate::r1cs::errors::SynthesisError),
-
-    #[error("The instance generated during proving does not match that in the index.")]
+    /// The instance generated during proving does not match that in the index.
     InstanceDoesNotMatchIndex,
-
-    #[error("The number of public inputs is incorrect.")]
+    /// The number of public inputs is incorrect.
     InvalidPublicInputLength,
-
-    #[error("During verification, a required evaluation is missing: {}", _0)]
+    /// During verification, a required evaluation is missing
     MissingEval(String),
-
-    #[error("Currently we only support square constraint matrices.")]
+    /// Currently we only support square constraint matrices.
     NonSquareMatrix,
-
-    #[error("During synthesis, our polynomials ended up being too high of degree.")]
-    PolyTooLarge,
+    /// During synthesis, our polynomials ended up being too high of degree
+    PolynomialDegreeTooLarge,
 }
 
 impl From<crate::r1cs::errors::SynthesisError> for AHPError {
     fn from(other: crate::r1cs::errors::SynthesisError) -> Self {
         AHPError::ConstraintSystemError(other)
+    }
+}
+
+impl From<anyhow::Error> for AHPError {
+    fn from(other: anyhow::Error) -> Self {
+        AHPError::Anyhow(other)
     }
 }

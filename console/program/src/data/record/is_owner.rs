@@ -78,10 +78,13 @@ mod tests {
         let randomizer = Scalar::rand(rng);
         let record = Record {
             owner,
-            data: IndexMap::from_iter(vec![
-                (Identifier::from_str("a")?, Entry::Private(Plaintext::from(Literal::Field(Field::rand(rng))))),
-                (Identifier::from_str("b")?, Entry::Private(Plaintext::from(Literal::Scalar(Scalar::rand(rng))))),
-            ]),
+            data: IndexMap::from_iter(
+                vec![
+                    (Identifier::from_str("a")?, Entry::Private(Plaintext::from(Literal::Field(Field::rand(rng))))),
+                    (Identifier::from_str("b")?, Entry::Private(Plaintext::from(Literal::Scalar(Scalar::rand(rng))))),
+                ]
+                .into_iter(),
+            ),
             nonce: N::g_scalar_multiply(&randomizer),
         };
 

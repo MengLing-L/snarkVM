@@ -52,7 +52,9 @@ impl<N: Network> ToBytes for Authority<N> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use console::prelude::TestRng;
+    use console::{network::Testnet3, prelude::TestRng};
+
+    type CurrentNetwork = Testnet3;
 
     #[test]
     fn test_bytes() {
@@ -62,6 +64,7 @@ mod tests {
             // Check the byte representation.
             let expected_bytes = expected.to_bytes_le().unwrap();
             assert_eq!(expected, Authority::read_le(&expected_bytes[..]).unwrap());
+            assert!(Authority::<CurrentNetwork>::read_le(&expected_bytes[1..]).is_err());
         }
     }
 }

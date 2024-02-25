@@ -20,17 +20,12 @@ impl<N: Network> FromBytes for Subdag<N> {
         // Read the version.
         let version = u8::read_le(&mut reader)?;
         // Ensure the version is valid.
-        // TODO (howardwu): For mainnet - Change the version back to 1.
-        if version != 1 && version != 2 {
-            return Err(error(format!("Invalid subdag version ({version})")));
+        if version != 0 {
+            return Err(error("Invalid batch version"));
         }
 
         // Read the number of rounds.
         let num_rounds = u32::read_le(&mut reader)?;
-        // Ensure the number of rounds is within bounds.
-        if num_rounds as usize > Self::MAX_ROUNDS {
-            return Err(error(format!("Number of rounds ({num_rounds}) exceeds the maximum ({})", Self::MAX_ROUNDS)));
-        }
         // Read the round certificates.
         let mut subdag = BTreeMap::new();
         for _ in 0..num_rounds {
@@ -38,15 +33,8 @@ impl<N: Network> FromBytes for Subdag<N> {
             let round = u64::read_le(&mut reader)?;
             // Read the number of certificates.
             let num_certificates = u32::read_le(&mut reader)?;
-            // Ensure the number of certificates is within bounds.
-            if num_certificates as usize > BatchHeader::<N>::MAX_CERTIFICATES {
-                return Err(error(format!(
-                    "Number of certificates ({num_certificates}) exceeds the maximum ({})",
-                    BatchHeader::<N>::MAX_CERTIFICATES
-                )));
-            }
             // Read the certificates.
-            let mut certificates = IndexSet::new();
+            let mut certificates = IndexSet::with_capacity(num_certificates as usize);
             for _ in 0..num_certificates {
                 // Read the certificate.
                 certificates.insert(BatchCertificate::read_le(&mut reader)?);
@@ -54,28 +42,8 @@ impl<N: Network> FromBytes for Subdag<N> {
             // Insert the round and certificates.
             subdag.insert(round, certificates);
         }
-
-        // Read the election certificate IDs.
-        let mut election_certificate_ids = IndexSet::new();
-        // TODO (howardwu): For mainnet - Always attempt to deserialize the election certificate IDs.
-        if version != 1 {
-            // Read the number of election certificate IDs.
-            let num_election_certificate_ids = u16::read_le(&mut reader)?;
-            // Ensure the number of election certificate IDs is within bounds.
-            if num_election_certificate_ids as usize > BatchHeader::<N>::MAX_CERTIFICATES {
-                return Err(error(format!(
-                    "Number of election certificate IDs ({num_election_certificate_ids}) exceeds the maximum ({})",
-                    BatchHeader::<N>::MAX_CERTIFICATES
-                )));
-            }
-            for _ in 0..num_election_certificate_ids {
-                // Read the election certificate ID.
-                election_certificate_ids.insert(Field::read_le(&mut reader)?);
-            }
-        }
-
         // Return the subdag.
-        Self::from(subdag, election_certificate_ids).map_err(error)
+        Self::from(subdag).map_err(|e| error(e.to_string()))
     }
 }
 
@@ -83,28 +51,20 @@ impl<N: Network> ToBytes for Subdag<N> {
     /// Writes the subdag to the buffer.
     fn write_le<W: Write>(&self, mut writer: W) -> IoResult<()> {
         // Write the version.
-        // TODO (howardwu): For mainnet - Change the version back to 1.
-        2u8.write_le(&mut writer)?;
+        0u8.write_le(&mut writer)?;
         // Write the number of rounds.
-        u32::try_from(self.subdag.len()).map_err(error)?.write_le(&mut writer)?;
+        u32::try_from(self.subdag.len()).map_err(|e| error(e.to_string()))?.write_le(&mut writer)?;
         // Write the round certificates.
         for (round, certificates) in &self.subdag {
             // Write the round.
             round.write_le(&mut writer)?;
             // Write the number of certificates.
-            u32::try_from(certificates.len()).map_err(error)?.write_le(&mut writer)?;
+            u32::try_from(certificates.len()).map_err(|e| error(e.to_string()))?.write_le(&mut writer)?;
             // Write the certificates.
             for certificate in certificates {
                 // Write the certificate.
                 certificate.write_le(&mut writer)?;
             }
-        }
-        // Write the number of election certificate IDs.
-        u16::try_from(self.election_certificate_ids.len()).map_err(error)?.write_le(&mut writer)?;
-        // Write the election certificate IDs.
-        for election_certificate_id in &self.election_certificate_ids {
-            // Write the election certificate ID.
-            election_certificate_id.write_le(&mut writer)?;
         }
         Ok(())
     }
@@ -113,6 +73,9 @@ impl<N: Network> ToBytes for Subdag<N> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use console::network::Testnet3;
+
+    type CurrentNetwork = Testnet3;
 
     #[test]
     fn test_bytes() {
@@ -122,6 +85,7 @@ mod tests {
             // Check the byte representation.
             let expected_bytes = expected.to_bytes_le().unwrap();
             assert_eq!(expected, Subdag::read_le(&expected_bytes[..]).unwrap());
+            assert!(Subdag::<CurrentNetwork>::read_le(&expected_bytes[1..]).is_err());
         }
     }
 }

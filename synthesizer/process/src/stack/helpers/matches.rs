@@ -28,7 +28,6 @@ impl<N: Network> StackMatches<N> for Stack<N> {
             (Value::Record(record), ValueType::ExternalRecord(locator)) => {
                 self.matches_external_record(record, locator)
             }
-            (Value::Future(future), ValueType::Future(locator)) => self.matches_future(future, locator),
             _ => bail!("A value does not match its declared value type '{value_type}'"),
         }
     }
@@ -43,7 +42,6 @@ impl<N: Network> StackMatches<N> for Stack<N> {
             (Value::Record(record), RegisterType::ExternalRecord(locator)) => {
                 self.matches_external_record(record, locator)
             }
-            (Value::Future(future), RegisterType::Future(locator)) => self.matches_future(future, locator),
             _ => bail!("A value does not match its declared register type '{register_type}'"),
         }
     }
@@ -57,8 +55,9 @@ impl<N: Network> StackMatches<N> for Stack<N> {
         ensure!(!Program::is_reserved_keyword(record_name), "Record name '{record_name}' is reserved");
 
         // Retrieve the record type from the program.
-        let Ok(record_type) = self.get_external_record(locator) else {
-            bail!("External '{locator}' is not defined in the program")
+        let record_type = match self.get_external_record(locator) {
+            Ok(record_type) => record_type,
+            Err(..) => bail!("External '{locator}' is not defined in the program"),
         };
 
         // Ensure the record name matches.
@@ -66,7 +65,7 @@ impl<N: Network> StackMatches<N> for Stack<N> {
             bail!("Expected external record '{record_name}', found external record '{}'", record_type.name())
         }
 
-        self.matches_record_internal(record, record_type, 0)
+        self.matches_record_internal(record, &record_type, 0)
     }
 
     /// Checks that the given record matches the layout of the record type.
@@ -75,8 +74,9 @@ impl<N: Network> StackMatches<N> for Stack<N> {
         ensure!(!Program::is_reserved_keyword(record_name), "Record name '{record_name}' is reserved");
 
         // Retrieve the record type from the program.
-        let Ok(record_type) = self.program().get_record(record_name) else {
-            bail!("Record '{record_name}' is not defined in the program")
+        let record_type = match self.program().get_record(record_name) {
+            Ok(record_type) => record_type,
+            Err(..) => bail!("Record '{record_name}' is not defined in the program"),
         };
 
         // Ensure the record name matches.
@@ -84,17 +84,12 @@ impl<N: Network> StackMatches<N> for Stack<N> {
             bail!("Expected record '{record_name}', found record '{}'", record_type.name())
         }
 
-        self.matches_record_internal(record, record_type, 0)
+        self.matches_record_internal(record, &record_type, 0)
     }
 
     /// Checks that the given plaintext matches the layout of the plaintext type.
     fn matches_plaintext(&self, plaintext: &Plaintext<N>, plaintext_type: &PlaintextType<N>) -> Result<()> {
         self.matches_plaintext_internal(plaintext, plaintext_type, 0)
-    }
-
-    /// Checks that the given future matches the layout of the future type.
-    fn matches_future(&self, future: &Future<N>, locator: &Locator<N>) -> Result<()> {
-        self.matches_future_internal(future, locator, 0)
     }
 }
 
@@ -198,16 +193,15 @@ impl<N: Network> Stack<N> {
                 }
                 // If `plaintext` is a struct, this is a mismatch.
                 Plaintext::Struct(..) => bail!("'{plaintext_type}' is invalid: expected literal, found struct"),
-                // If `plaintext` is an array, this is a mismatch.
-                Plaintext::Array(..) => bail!("'{plaintext_type}' is invalid: expected literal, found array"),
             },
             PlaintextType::Struct(struct_name) => {
                 // Ensure the struct name is valid.
                 ensure!(!Program::is_reserved_keyword(struct_name), "Struct '{struct_name}' is reserved");
 
                 // Retrieve the struct from the program.
-                let Ok(struct_) = self.program().get_struct(struct_name) else {
-                    bail!("Struct '{struct_name}' is not defined in the program")
+                let struct_ = match self.program().get_struct(struct_name) {
+                    Ok(struct_) => struct_,
+                    Err(..) => bail!("Struct '{struct_name}' is not defined in the program"),
                 };
 
                 // Ensure the struct name matches.
@@ -219,17 +213,10 @@ impl<N: Network> Stack<N> {
                 let members = match plaintext {
                     Plaintext::Literal(..) => bail!("'{struct_name}' is invalid: expected struct, found literal"),
                     Plaintext::Struct(members, ..) => members,
-                    Plaintext::Array(..) => bail!("'{struct_name}' is invalid: expected struct, found array"),
                 };
 
-                let num_members = members.len();
-                // Ensure the number of struct members does not go below the minimum.
-                ensure!(
-                    num_members >= N::MIN_STRUCT_ENTRIES,
-                    "'{struct_name}' cannot be less than {} entries",
-                    N::MIN_STRUCT_ENTRIES
-                );
                 // Ensure the number of struct members does not exceed the maximum.
+                let num_members = members.len();
                 ensure!(
                     num_members <= N::MAX_STRUCT_ENTRIES,
                     "'{struct_name}' cannot exceed {} entries",
@@ -260,70 +247,6 @@ impl<N: Network> Stack<N> {
 
                 Ok(())
             }
-            PlaintextType::Array(array_type) => match plaintext {
-                // If `plaintext` is a literal, this is a mismatch.
-                Plaintext::Literal(..) => bail!("'{plaintext_type}' is invalid: expected array, found literal"),
-                // If `plaintext` is a struct, this is a mismatch.
-                Plaintext::Struct(..) => bail!("'{plaintext_type}' is invalid: expected array, found struct"),
-                // If `plaintext` is an array, it must match the array type.
-                Plaintext::Array(array, ..) => {
-                    // Ensure the array length matches.
-                    let (actual_length, expected_length) = (array.len(), array_type.length());
-                    if **expected_length as usize != actual_length {
-                        bail!(
-                            "'{plaintext_type}' is invalid: expected {expected_length} elements, found {actual_length} elements"
-                        )
-                    }
-                    // Ensure the array elements match.
-                    for element in array.iter() {
-                        self.matches_plaintext_internal(element, array_type.next_element_type(), depth + 1)?;
-                    }
-                    Ok(())
-                }
-            },
         }
-    }
-
-    /// Checks that the given future matches the layout of the future type.
-    fn matches_future_internal(&self, future: &Future<N>, locator: &Locator<N>, depth: usize) -> Result<()> {
-        // If the depth exceeds the maximum depth, then the future type is invalid.
-        ensure!(depth <= N::MAX_DATA_DEPTH, "Future exceeded maximum depth of {}", N::MAX_DATA_DEPTH);
-
-        // Ensure that the program IDs match.
-        ensure!(future.program_id() == locator.program_id(), "Future program ID does not match");
-
-        // Ensure that the function names match.
-        ensure!(future.function_name() == locator.resource(), "Future name does not match");
-
-        // Retrieve the associated function.
-        let function = match locator.program_id() == self.program_id() {
-            true => self.get_function_ref(locator.resource())?,
-            false => self.get_external_program(locator.program_id())?.get_function_ref(locator.resource())?,
-        };
-        // Retrieve the finalize inputs.
-        let inputs = match function.finalize_logic() {
-            Some(finalize_logic) => finalize_logic.inputs(),
-            None => bail!("Function '{locator}' does not have a finalize block"),
-        };
-
-        // Ensure the number of arguments matches the number of inputs.
-        ensure!(future.arguments().len() == inputs.len(), "Future arguments do not match");
-
-        // Check that the arguments match the inputs.
-        for (argument, input) in future.arguments().iter().zip_eq(inputs.iter()) {
-            match (argument, input.finalize_type()) {
-                (Argument::Plaintext(plaintext), FinalizeType::Plaintext(plaintext_type)) => {
-                    self.matches_plaintext_internal(plaintext, plaintext_type, depth + 1)?
-                }
-                (Argument::Future(future), FinalizeType::Future(locator)) => {
-                    self.matches_future_internal(future, locator, depth + 1)?
-                }
-                (_, input_type) => {
-                    bail!("Argument type does not match input type: expected '{input_type}'")
-                }
-            }
-        }
-
-        Ok(())
     }
 }

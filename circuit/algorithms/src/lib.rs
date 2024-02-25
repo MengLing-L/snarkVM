@@ -18,11 +18,11 @@
 pub mod bhp;
 pub use bhp::*;
 
+pub mod table_example;
+pub use table_example::*;
+
 pub mod elligator2;
 pub use elligator2::Elligator2;
-
-pub mod keccak;
-pub use keccak::*;
 
 pub mod pedersen;
 pub use pedersen::*;

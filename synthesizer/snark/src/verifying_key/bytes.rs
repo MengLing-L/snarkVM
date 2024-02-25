@@ -20,7 +20,7 @@ impl<N: Network> FromBytes for VerifyingKey<N> {
         // Read the version.
         let version = u8::read_le(&mut reader)?;
         // Ensure the version is valid.
-        if version != 1 {
+        if version != 0 {
             return Err(error("Invalid verifying key version"));
         }
         // Read the verifying key.
@@ -34,7 +34,7 @@ impl<N: Network> ToBytes for VerifyingKey<N> {
     /// Writes the verifying key to a buffer.
     fn write_le<W: Write>(&self, mut writer: W) -> IoResult<()> {
         // Write the version.
-        1u8.write_le(&mut writer)?;
+        0u8.write_le(&mut writer)?;
         // Write the bytes.
         self.verifying_key.write_le(&mut writer)
     }

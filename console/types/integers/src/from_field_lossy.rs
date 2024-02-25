@@ -19,7 +19,7 @@ impl<E: Environment, I: IntegerType> Integer<E, I> {
     ///
     /// This method is commonly-used by hash-to-integer algorithms,
     /// where the hash output does not need to preserve the full base field.
-    pub fn from_field_lossy(field: &Field<E>) -> Self {
+    pub fn from_field_lossy(field: &Field<E>) -> Result<Self> {
         // Note: We are reconstituting the integer from the base field.
         // This is safe as the number of bits in the integer is less than the base field modulus,
         // and thus will always fit within a single base field element.
@@ -27,9 +27,7 @@ impl<E: Environment, I: IntegerType> Integer<E, I> {
 
         // Truncate the field to the size of the integer domain.
         // Slicing here is safe as the base field is larger than the integer domain.
-        let result = Self::from_bits_le(&field.to_bits_le()[..usize::try_from(I::BITS).unwrap()]);
-        debug_assert!(result.is_ok(), "A lossy integer should always be able to be constructed from field bits");
-        result.unwrap()
+        Self::from_bits_le(&field.to_bits_le()[..usize::try_from(I::BITS)?])
     }
 }
 
@@ -50,13 +48,13 @@ mod tests {
             let expected = Integer::<CurrentEnvironment, I>::rand(&mut rng);
 
             // Perform the operation.
-            let candidate = Integer::from_field_lossy(&expected.to_field()?);
+            let candidate = Integer::from_field_lossy(&expected.to_field()?)?;
             assert_eq!(expected, candidate);
 
             // Sample a random field.
             let expected = Field::<CurrentEnvironment>::rand(&mut rng);
             // Perform the operation.
-            Integer::<_, I>::from_field_lossy(&expected);
+            assert!(Integer::<_, I>::from_field_lossy(&expected).is_ok());
         }
         Ok(())
     }

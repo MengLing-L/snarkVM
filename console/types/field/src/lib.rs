@@ -32,9 +32,7 @@ mod zero;
 pub use snarkvm_console_network_environment::prelude::*;
 pub use snarkvm_console_types_boolean::Boolean;
 
-use zeroize::Zeroize;
-
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Zeroize)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Field<E: Environment> {
     /// The underlying field element.
     field: E::Field,
@@ -88,13 +86,6 @@ impl<E: Environment> Field<E> {
     /// Returns `1 * 2^{-1}`.
     pub fn half() -> Self {
         Self { field: E::Field::half() }
-    }
-}
-
-impl<E: Environment> Default for Field<E> {
-    /// Returns the default field element.
-    fn default() -> Self {
-        Self::zero()
     }
 }
 

@@ -15,11 +15,17 @@
 mod assignment;
 pub use assignment::*;
 
+mod lookup_constraints;
+pub use lookup_constraints::*;
+
 mod constraint_counter;
 pub use constraint_counter::*;
 
 mod constraint_system;
 pub use constraint_system::{ConstraintSynthesizer, ConstraintSystem};
+
+mod constraint_variable;
+pub use constraint_variable::*;
 
 pub mod errors;
 pub use errors::*;
@@ -27,22 +33,19 @@ pub use errors::*;
 mod linear_combination;
 pub use linear_combination::*;
 
+mod lookup_table;
+pub use lookup_table::*;
+
 mod namespace;
 pub use namespace::*;
 
-#[cfg(feature = "test")]
 mod optional_vec;
-#[cfg(feature = "test")]
 pub use optional_vec::*;
 
-#[cfg(feature = "test")]
 mod test_constraint_system;
-#[cfg(feature = "test")]
 pub use test_constraint_system::{Fr, TestConstraintSystem};
 
-#[cfg(feature = "test")]
 mod test_constraint_checker;
-#[cfg(feature = "test")]
 pub use test_constraint_checker::TestConstraintChecker;
 
 use snarkvm_utilities::serialize::*;
@@ -70,9 +73,9 @@ impl Variable {
 /// Represents the index of either a public variable (input) or a private variable (auxiliary).
 #[derive(Copy, Clone, PartialEq, Debug, Eq, Hash)]
 pub enum Index {
-    /// Index of a public variable.
+    /// Index of an public variable.
     Public(usize),
-    /// Index of a private variable.
+    /// Index of an private variable.
     Private(usize),
 }
 

@@ -21,8 +21,7 @@ impl<N: Network> FromBytes for PlaintextType<N> {
         match variant {
             0 => Ok(Self::Literal(LiteralType::read_le(&mut reader)?)),
             1 => Ok(Self::Struct(Identifier::read_le(&mut reader)?)),
-            2 => Ok(Self::Array(ArrayType::read_le(&mut reader)?)),
-            3.. => Err(error(format!("Failed to deserialize annotation variant {variant}"))),
+            2.. => Err(error(format!("Failed to deserialize annotation variant {variant}"))),
         }
     }
 }
@@ -32,16 +31,12 @@ impl<N: Network> ToBytes for PlaintextType<N> {
     fn write_le<W: Write>(&self, mut writer: W) -> IoResult<()> {
         match self {
             Self::Literal(literal_type) => {
-                0u8.write_le(&mut writer)?;
+                u8::write_le(&0u8, &mut writer)?;
                 literal_type.write_le(&mut writer)
             }
             Self::Struct(identifier) => {
-                1u8.write_le(&mut writer)?;
+                u8::write_le(&1u8, &mut writer)?;
                 identifier.write_le(&mut writer)
-            }
-            Self::Array(array_type) => {
-                2u8.write_le(&mut writer)?;
-                array_type.write_le(&mut writer)
             }
         }
     }

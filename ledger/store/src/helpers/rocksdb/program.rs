@@ -12,10 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(clippy::type_complexity)]
-
 use crate::{
-    helpers::rocksdb::{self, CommitteeMap, DataMap, Database, MapID, NestedDataMap, ProgramMap},
+    helpers::rocksdb::{self, CommitteeMap, DataMap, Database, MapID, ProgramMap},
     CommitteeStorage,
     CommitteeStore,
     FinalizeStorage,
@@ -23,11 +21,11 @@ use crate::{
 use console::{
     prelude::*,
     program::{Identifier, Plaintext, ProgramID, Value},
+    types::Field,
 };
 use ledger_committee::Committee;
 
-use aleo_std_storage::StorageMode;
-use indexmap::IndexSet;
+use indexmap::{IndexMap, IndexSet};
 
 /// A RocksDB finalize storage.
 #[derive(Clone)]
@@ -36,42 +34,40 @@ pub struct FinalizeDB<N: Network> {
     committee_store: CommitteeStore<N, CommitteeDB<N>>,
     /// The program ID map.
     program_id_map: DataMap<ProgramID<N>, IndexSet<Identifier<N>>>,
-    /// The key-value map.
-    key_value_map: NestedDataMap<(ProgramID<N>, Identifier<N>), Plaintext<N>, Value<N>>,
-    /// The storage mode.
-    storage_mode: StorageMode,
+    /// The mapping ID map.
+    mapping_id_map: DataMap<(ProgramID<N>, Identifier<N>), Field<N>>,
+    /// The key-value ID map.
+    key_value_id_map: DataMap<Field<N>, IndexMap<Field<N>, Field<N>>>,
+    /// The key map.
+    key_map: DataMap<Field<N>, Plaintext<N>>,
+    /// The value map.
+    value_map: DataMap<Field<N>, Value<N>>,
+    /// The optional development ID.
+    dev: Option<u16>,
 }
 
 #[rustfmt::skip]
 impl<N: Network> FinalizeStorage<N> for FinalizeDB<N> {
     type CommitteeStorage = CommitteeDB<N>;
     type ProgramIDMap = DataMap<ProgramID<N>, IndexSet<Identifier<N>>>;
-    type KeyValueMap = NestedDataMap<(ProgramID<N>, Identifier<N>), Plaintext<N>, Value<N>>;
+    type MappingIDMap = DataMap<(ProgramID<N>, Identifier<N>), Field<N>>;
+    type KeyValueIDMap = DataMap<Field<N>, IndexMap<Field<N>, Field<N>>>;
+    type KeyMap = DataMap<Field<N>, Plaintext<N>>;
+    type ValueMap = DataMap<Field<N>, Value<N>>;
 
     /// Initializes the finalize storage.
-    fn open<S: Clone + Into<StorageMode>>(storage: S) -> Result<Self> {
+    fn open(dev: Option<u16>) -> Result<Self> {
         // Initialize the committee store.
-        let committee_store = CommitteeStore::<N, CommitteeDB<N>>::open(storage.clone())?;
+        let committee_store = CommitteeStore::<N, CommitteeDB<N>>::open(dev)?;
         // Return the finalize storage.
         Ok(Self {
             committee_store,
-            program_id_map: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::Program(ProgramMap::ProgramID))?,
-            key_value_map: rocksdb::RocksDB::open_nested_map(N::ID, storage.clone(), MapID::Program(ProgramMap::KeyValueID))?,
-            storage_mode: storage.into(),
-        })
-    }
-
-    /// Initializes the test-variant of the storage.
-    #[cfg(any(test, feature = "test"))]
-    fn open_testing(temp_dir: std::path::PathBuf, dev: Option<u16>) -> Result<Self> {
-        // Initialize the committee store.
-        let committee_store = CommitteeStore::<N, CommitteeDB<N>>::open_testing(temp_dir.clone(), dev)?;
-        // Return the finalize storage.
-        Ok(Self {
-            committee_store,
-            program_id_map: rocksdb::RocksDB::open_map_testing(temp_dir.clone(), dev, MapID::Program(ProgramMap::ProgramID))?,
-            key_value_map: rocksdb::RocksDB::open_nested_map_testing(temp_dir.clone(), dev, MapID::Program(ProgramMap::KeyValueID))?,
-            storage_mode: dev.into(),
+            program_id_map: rocksdb::RocksDB::open_map(N::ID, dev, MapID::Program(ProgramMap::ProgramID))?,
+            mapping_id_map: rocksdb::RocksDB::open_map(N::ID, dev, MapID::Program(ProgramMap::MappingID))?,
+            key_value_id_map: rocksdb::RocksDB::open_map(N::ID, dev, MapID::Program(ProgramMap::KeyValueID))?,
+            key_map: rocksdb::RocksDB::open_map(N::ID, dev, MapID::Program(ProgramMap::Key))?,
+            value_map: rocksdb::RocksDB::open_map(N::ID, dev, MapID::Program(ProgramMap::Value))?,
+            dev,
         })
     }
 
@@ -85,14 +81,29 @@ impl<N: Network> FinalizeStorage<N> for FinalizeDB<N> {
         &self.program_id_map
     }
 
-    /// Returns the key-value map.
-    fn key_value_map(&self) -> &Self::KeyValueMap {
-        &self.key_value_map
+    /// Returns the mapping ID map.
+    fn mapping_id_map(&self) -> &Self::MappingIDMap {
+        &self.mapping_id_map
     }
 
-    /// Returns the storage mode.
-    fn storage_mode(&self) -> &StorageMode {
-        &self.storage_mode
+    /// Returns the key-value ID map.
+    fn key_value_id_map(&self) -> &Self::KeyValueIDMap {
+        &self.key_value_id_map
+    }
+
+    /// Returns the key map.
+    fn key_map(&self) -> &Self::KeyMap {
+        &self.key_map
+    }
+
+    /// Returns the value map.
+    fn value_map(&self) -> &Self::ValueMap {
+        &self.value_map
+    }
+
+    /// Returns the optional development ID.
+    fn dev(&self) -> Option<u16> {
+        self.dev
     }
 }
 
@@ -105,8 +116,8 @@ pub struct CommitteeDB<N: Network> {
     round_to_height_map: DataMap<u64, u32>,
     /// The committee map.
     committee_map: DataMap<u32, Committee<N>>,
-    /// The storage mode.
-    storage_mode: StorageMode,
+    /// The optional development ID.
+    dev: Option<u16>,
 }
 
 #[rustfmt::skip]
@@ -116,23 +127,12 @@ impl<N: Network> CommitteeStorage<N> for CommitteeDB<N> {
     type CommitteeMap = DataMap<u32, Committee<N>>;
 
     /// Initializes the committee storage.
-    fn open<S: Clone + Into<StorageMode>>(storage: S) -> Result<Self> {
+    fn open(dev: Option<u16>) -> Result<Self> {
         Ok(Self {
-            current_round_map: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::Committee(CommitteeMap::CurrentRound))?,
-            round_to_height_map: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::Committee(CommitteeMap::RoundToHeight))?,
-            committee_map: rocksdb::RocksDB::open_map(N::ID, storage.clone(), MapID::Committee(CommitteeMap::Committee))?,
-            storage_mode: storage.into(),
-        })
-    }
-
-    /// Initializes the test-variant of the storage.
-    #[cfg(any(test, feature = "test"))]
-    fn open_testing(temp_dir: std::path::PathBuf, dev: Option<u16>) -> Result<Self> {
-        Ok(Self {
-            current_round_map: rocksdb::RocksDB::open_map_testing(temp_dir.clone(), dev, MapID::Committee(CommitteeMap::CurrentRound))?,
-            round_to_height_map: rocksdb::RocksDB::open_map_testing(temp_dir.clone(), dev, MapID::Committee(CommitteeMap::RoundToHeight))?,
-            committee_map: rocksdb::RocksDB::open_map_testing(temp_dir, dev, MapID::Committee(CommitteeMap::Committee))?,
-            storage_mode: dev.into(),
+            current_round_map: rocksdb::RocksDB::open_map(N::ID, dev, MapID::Committee(CommitteeMap::CurrentRound))?,
+            round_to_height_map: rocksdb::RocksDB::open_map(N::ID, dev, MapID::Committee(CommitteeMap::RoundToHeight))?,
+            committee_map: rocksdb::RocksDB::open_map(N::ID, dev, MapID::Committee(CommitteeMap::Committee))?,
+            dev,
         })
     }
 
@@ -151,8 +151,8 @@ impl<N: Network> CommitteeStorage<N> for CommitteeDB<N> {
         &self.committee_map
     }
 
-    /// Returns the storage mode.
-    fn storage_mode(&self) -> &StorageMode {
-        &self.storage_mode
+    /// Returns the optional development ID.
+    fn dev(&self) -> Option<u16> {
+        self.dev
     }
 }

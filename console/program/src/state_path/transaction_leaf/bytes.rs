@@ -43,6 +43,9 @@ impl<N: Network> ToBytes for TransactionLeaf<N> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use snarkvm_console_network::Testnet3;
+
+    type CurrentNetwork = Testnet3;
 
     const ITERATIONS: u64 = 1000;
 
@@ -57,6 +60,7 @@ mod tests {
             // Check the byte representation.
             let expected_bytes = expected.to_bytes_le()?;
             assert_eq!(expected, TransactionLeaf::read_le(&expected_bytes[..])?);
+            assert!(TransactionLeaf::<CurrentNetwork>::read_le(&expected_bytes[1..]).is_err());
         }
         Ok(())
     }

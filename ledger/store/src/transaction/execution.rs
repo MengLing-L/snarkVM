@@ -25,7 +25,6 @@ use console::network::prelude::*;
 use ledger_block::{Execution, Transaction, Transition};
 use synthesizer_snark::Proof;
 
-use aleo_std_storage::StorageMode;
 use anyhow::Result;
 use core::marker::PhantomData;
 use std::borrow::Cow;
@@ -57,9 +56,9 @@ pub trait ExecutionStorage<N: Network>: Clone + Send + Sync {
         self.fee_store().transition_store()
     }
 
-    /// Returns the storage mode.
-    fn storage_mode(&self) -> &StorageMode {
-        self.transition_store().storage_mode()
+    /// Returns the optional development ID.
+    fn dev(&self) -> Option<u16> {
+        self.transition_store().dev()
     }
 
     /// Starts an atomic batch write operation.
@@ -354,9 +353,9 @@ impl<N: Network, E: ExecutionStorage<N>> ExecutionStore<N, E> {
         self.storage.finish_atomic()
     }
 
-    /// Returns the storage mode.
-    pub fn storage_mode(&self) -> &StorageMode {
-        self.storage.storage_mode()
+    /// Returns the optional development ID.
+    pub fn dev(&self) -> Option<u16> {
+        self.storage.dev()
     }
 }
 

@@ -23,9 +23,8 @@ use crate::{
     polycommit::sonic_pc::{LabeledPolynomial, PolynomialInfo, PolynomialLabel},
     snark::varuna::{
         ahp::{indexer::CircuitInfo, verifier, AHPError, AHPForR1CS, CircuitId},
-        matrices::MatrixEvals,
+        matrices::MatrixArithmetization,
         prover,
-        selectors::apply_randomized_selector,
         witness_label,
         SNARKMode,
     },
@@ -43,12 +42,10 @@ use std::collections::BTreeMap;
 use rayon::prelude::*;
 
 type Sum<F> = F;
-type Lhs<F> = DensePolynomial<F>;
-type Apoly<F> = LabeledPolynomial<F>;
-type Bpoly<F> = LabeledPolynomial<F>;
+type H<F> = DensePolynomial<F>;
 type Gpoly<F> = LabeledPolynomial<F>;
 
-impl<F: PrimeField, SM: SNARKMode> AHPForR1CS<F, SM> {
+impl<F: PrimeField, MM: SNARKMode> AHPForR1CS<F, MM> {
     /// Output the number of oracles sent by the prover in the fourth round.
     pub const fn num_fourth_round_oracles(circuits: usize) -> usize {
         circuits * 3
@@ -78,9 +75,9 @@ impl<F: PrimeField, SM: SNARKMode> AHPForR1CS<F, SM> {
     pub fn prover_fourth_round<'a, R: RngCore>(
         second_message: &verifier::SecondMessage<F>,
         third_message: &verifier::ThirdMessage<F>,
-        mut state: prover::State<'a, F, SM>,
+        mut state: prover::State<'a, F, MM>,
         _r: &mut R,
-    ) -> Result<(prover::FourthMessage<F>, prover::FourthOracles<F>, prover::State<'a, F, SM>), AHPError> {
+    ) -> Result<(prover::FourthMessage<F>, prover::FourthOracles<F>, prover::State<'a, F, MM>), AHPError> {
         let round_time = start_timer!(|| "AHP::Prover::FourthRound");
 
         let verifier::SecondMessage { alpha, .. } = second_message;
@@ -89,20 +86,19 @@ impl<F: PrimeField, SM: SNARKMode> AHPForR1CS<F, SM> {
         let mut pool = ExecutionPool::with_capacity(3 * state.circuit_specific_states.len());
 
         let max_non_zero_domain_size = state.max_non_zero_domain;
-        let matrix_labels = ["a", "b", "c"];
+        let matrix_labels = ["g_a", "g_b", "g_c"];
         for (&circuit, state_i) in &state.circuit_specific_states {
             let v_R_i_at_alpha = state_i.constraint_domain.evaluate_vanishing_polynomial(*alpha);
             let v_C_i_at_beta = state_i.variable_domain.evaluate_vanishing_polynomial(*beta);
             let v_R_i_alpha_v_C_i_beta = v_R_i_at_alpha * v_C_i_at_beta;
             let k_domains = [state_i.non_zero_a_domain, state_i.non_zero_b_domain, state_i.non_zero_c_domain];
             let ariths = [&circuit.a_arith, &circuit.b_arith, &circuit.c_arith];
-            let id = circuit.id;
 
-            for (matrix_label, non_zero_domain, arith) in itertools::izip!(matrix_labels, k_domains, ariths) {
+            for ((matrix_label, non_zero_domain), arith) in matrix_labels.into_iter().zip_eq(k_domains).zip_eq(ariths) {
+                let label = witness_label(circuit.id, matrix_label, 0);
                 pool.add_job(move || {
                     let result = Self::calculate_matrix_sumcheck_witness(
-                        matrix_label,
-                        id,
+                        label,
                         state_i.constraint_domain,
                         state_i.variable_domain,
                         non_zero_domain,
@@ -126,14 +122,12 @@ impl<F: PrimeField, SM: SNARKMode> AHPForR1CS<F, SM> {
         {
             assert_eq!(circuit_a, circuit_b);
             assert_eq!(circuit_a, circuit_c);
-            let (sum_a, lhs_a, g_a, a_poly_a, b_poly_a) = results_a?;
-            let (sum_b, lhs_b, g_b, a_poly_b, b_poly_b) = results_b?;
-            let (sum_c, lhs_c, g_c, a_poly_c, b_poly_c) = results_c?;
+            let (sum_a, h_a, g_a) = results_a?;
+            let (sum_b, h_b, g_b) = results_b?;
+            let (sum_c, h_c, g_c) = results_c?;
             let matrix_sum = prover::message::MatrixSums { sum_a, sum_b, sum_c };
             sums.push(matrix_sum);
-            state.circuit_specific_states.get_mut(circuit_a).unwrap().lhs_polynomials = Some([lhs_a, lhs_b, lhs_c]);
-            state.circuit_specific_states.get_mut(circuit_a).unwrap().a_polys = Some([a_poly_a, a_poly_b, a_poly_c]);
-            state.circuit_specific_states.get_mut(circuit_a).unwrap().b_polys = Some([b_poly_a, b_poly_b, b_poly_c]);
+            state.circuit_specific_states.get_mut(circuit_a).unwrap().h_polynomials = Some([h_a, h_b, h_c]);
             let matrix_gs = prover::MatrixGs { g_a, g_b, g_c };
             gs.insert(circuit_a.id, matrix_gs);
         }
@@ -152,35 +146,35 @@ impl<F: PrimeField, SM: SNARKMode> AHPForR1CS<F, SM> {
 
     #[allow(clippy::too_many_arguments)]
     fn calculate_matrix_sumcheck_witness(
-        label: &str,
-        id: CircuitId,
+        label: String,
         constraint_domain: EvaluationDomain<F>,
         variable_domain: EvaluationDomain<F>,
         non_zero_domain: EvaluationDomain<F>,
-        arithmetization: &MatrixEvals<F>,
+        arithmetization: &MatrixArithmetization<F>,
         alpha: F,
         beta: F,
         v_R_i_alpha_v_C_i_beta: F,
         max_non_zero_domain: EvaluationDomain<F>,
         fft_precomputation: &FFTPrecomputation<F>,
         ifft_precomputation: &IFFTPrecomputation<F>,
-    ) -> Result<(Sum<F>, Lhs<F>, Gpoly<F>, Apoly<F>, Bpoly<F>)> {
-        let (row_on_K, col_on_K, row_col_val) =
-            (&arithmetization.row, &arithmetization.col, &arithmetization.row_col_val);
-        let R_size = constraint_domain.size_as_field_element;
-        let C_size = variable_domain.size_as_field_element;
-
+    ) -> Result<(Sum<F>, H<F>, Gpoly<F>)> {
+        let matrix_sumcheck_helper_time = start_timer!(|| format!("matrix_sumcheck_helper {label}"));
         let mut job_pool = snarkvm_utilities::ExecutionPool::with_capacity(2);
         job_pool.add_job(|| {
             let a_poly_time = start_timer!(|| format!("Computing a poly for {label}"));
             let a_poly = {
-                let evals = cfg_iter!(row_col_val.evaluations).map(|v| v_R_i_alpha_v_C_i_beta * v).collect();
-                EvaluationsOnDomain::from_vec_and_domain(evals, non_zero_domain)
-                    .interpolate_with_pc(ifft_precomputation)
+                let coeffs = cfg_iter!(arithmetization.row_col_val.as_dense().unwrap().coeffs())
+                    .map(|v| v_R_i_alpha_v_C_i_beta * v)
+                    .collect();
+                DensePolynomial::from_coefficients_vec(coeffs)
             };
             end_timer!(a_poly_time);
             a_poly
         });
+
+        let (row_on_K, col_on_K) = (&arithmetization.evals_on_K.row, &arithmetization.evals_on_K.col);
+        let R_size = constraint_domain.size_as_field_element;
+        let C_size = variable_domain.size_as_field_element;
 
         job_pool.add_job(|| {
             let b_poly_time = start_timer!(|| format!("Computing b poly for {label}"));
@@ -204,10 +198,12 @@ impl<F: PrimeField, SM: SNARKMode> AHPForR1CS<F, SM> {
             .map(|(r, c)| (alpha - r) * (beta - c))
             .collect();
 
-        let matrix_sumcheck_constants = v_R_i_alpha_v_C_i_beta * constraint_domain.size_inv * variable_domain.size_inv;
-        batch_inversion_and_mul(&mut inverses, &matrix_sumcheck_constants);
+        let new_constant = v_R_i_alpha_v_C_i_beta * constraint_domain.size_inv * variable_domain.size_inv;
+        batch_inversion_and_mul(&mut inverses, &new_constant);
 
-        cfg_iter_mut!(inverses).zip_eq(&row_col_val.evaluations).for_each(|(inv, v)| *inv *= v);
+        cfg_iter_mut!(inverses)
+            .zip_eq(&arithmetization.evals_on_K.row_col_val.evaluations)
+            .for_each(|(inv, v)| *inv *= v);
         let f_evals_on_K = inverses;
 
         end_timer!(f_evals_time);
@@ -216,30 +212,29 @@ impl<F: PrimeField, SM: SNARKMode> AHPForR1CS<F, SM> {
         // we define f as the rational equation for which we're running the sumcheck protocol
         let f = EvaluationsOnDomain::from_vec_and_domain(f_evals_on_K, non_zero_domain)
             .interpolate_with_pc(ifft_precomputation);
+        let sum = f.coeffs[0];
 
         end_timer!(f_poly_time);
         let g = DensePolynomial::from_coefficients_slice(&f.coeffs[1..]);
         let mut h = &a_poly
             - &{
                 let mut multiplier = PolyMultiplier::new();
-                multiplier.add_polynomial_ref(&b_poly, "b");
-                multiplier.add_polynomial_ref(&f, "f");
+                multiplier.add_polynomial(b_poly, "b");
+                multiplier.add_polynomial(f, "f");
                 multiplier.add_precomputation(fft_precomputation, ifft_precomputation);
                 multiplier.multiply().unwrap()
             };
 
         let combiner = F::one(); // We are applying combiners in the fifth round when summing the witnesses
-        let (lhs, remainder) =
-            apply_randomized_selector(&mut h, combiner, &max_non_zero_domain, &non_zero_domain, false)?;
+        let (h, remainder) =
+            Self::apply_randomized_selector(&mut h, combiner, &max_non_zero_domain, &non_zero_domain, false)?;
         assert!(remainder.is_none());
 
-        let g_label = format!("g_{label}");
-        let g = LabeledPolynomial::new(witness_label(id, &g_label, 0), g, Some(non_zero_domain.size() - 2), None);
-        let a_poly = LabeledPolynomial::new(format!("circuit_{id}_a_poly_{label}"), a_poly, None, None);
-        let b_poly = LabeledPolynomial::new(format!("circuit_{id}_b_poly_{label}"), b_poly, None, None);
+        let g = LabeledPolynomial::new(label, g, Some(non_zero_domain.size() - 2), None);
+        end_timer!(matrix_sumcheck_helper_time);
 
-        assert!(lhs.degree() <= non_zero_domain.size() - 2);
+        assert!(h.degree() <= non_zero_domain.size() - 2);
         assert!(g.degree() <= non_zero_domain.size() - 2);
-        Ok((f.coeffs[0], lhs, g, a_poly, b_poly))
+        Ok((sum, h, g))
     }
 }

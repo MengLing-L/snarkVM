@@ -30,7 +30,7 @@ impl snarkvm_algorithms::r1cs::ConstraintSynthesizer<Fq> for Circuit {
         &self,
         cs: &mut CS,
     ) -> Result<(), snarkvm_algorithms::r1cs::SynthesisError> {
-        crate::circuit::CIRCUIT.with(|circuit| circuit.borrow().generate_constraints(cs))
+        crate::circuit::CIRCUIT.with(|circuit| (*(**circuit).borrow()).generate_constraints(cs))
     }
 }
 
@@ -50,15 +50,13 @@ impl<F: PrimeField> R1CS<F> {
         // Allocate the public variables.
         for (i, public) in self.to_public_variables().iter().enumerate() {
             match public {
-                Variable::Public(index_value) => {
-                    let (index, value) = index_value.as_ref();
-
+                Variable::Public(index, value) => {
                     assert_eq!(
                         i as u64, *index,
                         "Public variables in first system must be processed in lexicographic order"
                     );
 
-                    let gadget = cs.alloc_input(|| format!("Public {i}"), || Ok(*value))?;
+                    let gadget = cs.alloc_input(|| format!("Public {i}"), || Ok(**value))?;
 
                     assert_eq!(
                         snarkvm_algorithms::r1cs::Index::Public((index + 1) as usize),
@@ -77,15 +75,13 @@ impl<F: PrimeField> R1CS<F> {
         // Allocate the private variables.
         for (i, private) in self.to_private_variables().iter().enumerate() {
             match private {
-                Variable::Private(index_value) => {
-                    let (index, value) = index_value.as_ref();
-
+                Variable::Private(index, value) => {
                     assert_eq!(
                         i as u64, *index,
                         "Private variables in first system must be processed in lexicographic order"
                     );
 
-                    let gadget = cs.alloc(|| format!("Private {i}"), || Ok(*value))?;
+                    let gadget = cs.alloc(|| format!("Private {i}"), || Ok(**value))?;
 
                     assert_eq!(
                         snarkvm_algorithms::r1cs::Index::Private(i),
@@ -117,8 +113,7 @@ impl<F: PrimeField> R1CS<F> {
                                     "Failed during constraint translation. The first system by definition cannot have constant variables in the terms"
                                 )
                             }
-                            Variable::Public(index_value) => {
-                                let (index, _value) = index_value.as_ref();
+                            Variable::Public(index, _) => {
                                 let gadget = converter.public.get(index).unwrap();
                                 assert_eq!(
                                     snarkvm_algorithms::r1cs::Index::Public((index + 1) as usize),
@@ -127,8 +122,7 @@ impl<F: PrimeField> R1CS<F> {
                                 );
                                 linear_combination += (*coefficient, *gadget);
                             }
-                            Variable::Private(index_value) => {
-                                let (index, _value) = index_value.as_ref();
+                            Variable::Private(index, _) => {
                                 let gadget = converter.private.get(index).unwrap();
                                 assert_eq!(
                                     snarkvm_algorithms::r1cs::Index::Private(*index as usize),
@@ -162,6 +156,23 @@ impl<F: PrimeField> R1CS<F> {
                 |lc| lc + convert_linear_combination(b),
                 |lc| lc + convert_linear_combination(c),
             );
+
+            // Add the lookup tables.
+            for table in &self.tables {
+                cs.add_lookup_table(table.clone())
+            }
+
+            // Enforce all of the lookup constraints.
+            for (i, constraint) in self.to_lookup_constraints().iter().enumerate() {
+                let (a, b, c, table_index) = constraint.to_terms();
+                cs.enforce_lookup(
+                    || format!("Lookup Constraint {i}"),
+                    |lc| lc + convert_linear_combination(a),
+                    |lc| lc + convert_linear_combination(b),
+                    |lc| lc + convert_linear_combination(c),
+                    table_index,
+                )?;
+            }
         }
 
         // Ensure the given `cs` matches in size with the first system.

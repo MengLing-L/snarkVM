@@ -89,7 +89,7 @@ impl<N: Network> Process<N> {
         );
         // Ensure the number of inputs is correct.
         let num_inputs = fee.inputs().len();
-        ensure!(num_inputs == 4, "The number of inputs in the fee transition should be 4, found {num_inputs}",);
+        ensure!(num_inputs == 3, "The number of inputs in the fee transition should be 3, found {num_inputs}",);
         // Ensure each input is valid.
         if fee.inputs().iter().enumerate().any(|(index, input)| !input.verify(function_id, fee.tcm(), index)) {
             bail!("Failed to verify a fee input")
@@ -116,21 +116,19 @@ impl<N: Network> Process<N> {
         // Compute the x- and y-coordinate of `tpk`.
         let (tpk_x, tpk_y) = fee.tpk().to_xy_coordinates();
 
-        // Compute the x- and y-coordinate of `parent`.
-        let (parent_x, parent_y) = fee.program_id().to_address()?.to_xy_coordinates();
-
         // Construct the public inputs to verify the proof.
         let mut inputs = vec![N::Field::one(), *tpk_x, *tpk_y, **fee.tcm()];
         // Extend the inputs with the input IDs.
         inputs.extend(fee.inputs().iter().flat_map(|input| input.verifier_inputs()));
-        // Extend the verifier inputs with the public inputs for 'self.caller'.
-        inputs.extend([*Field::<N>::one(), *parent_x, *parent_y]);
         // Extend the inputs with the output IDs.
         inputs.extend(fee.outputs().iter().flat_map(|output| output.verifier_inputs()));
         lap!(timer, "Construct the verifier inputs");
 
         #[cfg(debug_assertions)]
         println!("Fee public inputs ({} elements): {:#?}", inputs.len(), inputs);
+
+        // Ensure the fee transition does not contain a finalize scope.
+        ensure!(fee.finalize().is_none(), "The fee transition should not contain finalize inputs");
 
         // Retrieve the verifying key.
         let verifying_key = self.get_verifying_key(fee.program_id(), fee.function_name())?;
@@ -159,45 +157,46 @@ impl<N: Network> Process<N> {
         );
         // Ensure the number of inputs is correct.
         let num_inputs = fee.inputs().len();
-        ensure!(num_inputs == 3, "The number of inputs in the fee transition should be 3, found {num_inputs}",);
+        ensure!(num_inputs == 2, "The number of inputs in the fee transition should be 2, found {num_inputs}",);
         // Ensure each input is valid.
         if fee.inputs().iter().enumerate().any(|(index, input)| !input.verify(function_id, fee.tcm(), index)) {
             bail!("Failed to verify a fee input")
         }
         lap!(timer, "Verify the inputs");
 
-        // Ensure there are is one output.
+        // Ensure there are no outputs.
         ensure!(
-            fee.outputs().len() == 1,
-            "The number of outputs in the fee transition should be 1, found {}",
+            fee.outputs().is_empty(),
+            "The number of outputs in the fee transition should be 0, found {}",
             fee.outputs().len()
         );
-        // Ensure each output is valid.
-        if fee
-            .outputs()
-            .iter()
-            .enumerate()
-            .any(|(index, output)| !output.verify(function_id, fee.tcm(), num_inputs + index))
-        {
-            bail!("Failed to verify a fee output")
-        }
-        lap!(timer, "Verify the outputs");
+        lap!(timer, "Verify there are no outputs");
 
         // Compute the x- and y-coordinate of `tpk`.
         let (tpk_x, tpk_y) = fee.tpk().to_xy_coordinates();
-
-        // Compute the x- and y-coordinate of `parent`.
-        let (parent_x, parent_y) = fee.program_id().to_address()?.to_xy_coordinates();
 
         // Construct the public inputs to verify the proof.
         let mut inputs = vec![N::Field::one(), *tpk_x, *tpk_y, **fee.tcm()];
         // Extend the inputs with the input IDs.
         inputs.extend(fee.inputs().iter().flat_map(|input| input.verifier_inputs()));
-        // Extend the verifier inputs with the public inputs for 'self.caller'
-        inputs.extend([*Field::<N>::one(), *parent_x, *parent_y]);
-        // Extend the inputs with the output IDs.
-        inputs.extend(fee.outputs().iter().flat_map(|output| output.verifier_inputs()));
         lap!(timer, "Construct the verifier inputs");
+
+        // Ensure the fee transition contains finalize inputs.
+        match fee.finalize() {
+            Some(finalize) => {
+                // Ensure the number of inputs for finalize matches in the finalize logic.
+                ensure!(finalize.len() == 2, "The number of inputs for finalize is incorrect");
+
+                // Convert the finalize inputs into concatenated bits.
+                let finalize_bits = finalize.iter().flat_map(ToBits::to_bits_le).collect::<Vec<_>>();
+                // Compute the checksum of the finalize inputs.
+                let checksum = N::hash_bhp1024(&finalize_bits)?;
+
+                // [Inputs] Extend the verifier inputs with the inputs for finalize.
+                inputs.push(*checksum);
+            }
+            None => bail!("The fee transition is missing inputs for 'finalize'"),
+        }
 
         #[cfg(debug_assertions)]
         println!("Fee public inputs ({} elements): {:#?}", inputs.len(), inputs);

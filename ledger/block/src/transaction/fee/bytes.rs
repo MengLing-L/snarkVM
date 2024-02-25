@@ -20,7 +20,7 @@ impl<N: Network> FromBytes for Fee<N> {
         // Read the version.
         let version = u8::read_le(&mut reader)?;
         // Ensure the version is valid.
-        if version != 1 {
+        if version != 0 {
             return Err(error("Invalid fee version"));
         }
         // Read the transition.
@@ -44,7 +44,7 @@ impl<N: Network> ToBytes for Fee<N> {
     /// Writes the fee to a buffer.
     fn write_le<W: Write>(&self, mut writer: W) -> IoResult<()> {
         // Write the version.
-        1u8.write_le(&mut writer)?;
+        0u8.write_le(&mut writer)?;
         // Write the transition.
         self.transition.write_le(&mut writer)?;
         // Write the global state root.
@@ -64,6 +64,9 @@ impl<N: Network> ToBytes for Fee<N> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use console::network::Testnet3;
+
+    type CurrentNetwork = Testnet3;
 
     #[test]
     fn test_bytes() -> Result<()> {
@@ -75,6 +78,7 @@ mod tests {
         // Check the byte representation.
         let expected_bytes = expected.to_bytes_le()?;
         assert_eq!(expected, Fee::read_le(&expected_bytes[..])?);
+        assert!(Fee::<CurrentNetwork>::read_le(&expected_bytes[1..]).is_err());
 
         // Construct a new public fee.
         let expected = crate::transaction::fee::test_helpers::sample_fee_public_hardcoded(rng);
@@ -82,6 +86,7 @@ mod tests {
         // Check the byte representation.
         let expected_bytes = expected.to_bytes_le()?;
         assert_eq!(expected, Fee::read_le(&expected_bytes[..])?);
+        assert!(Fee::<CurrentNetwork>::read_le(&expected_bytes[1..]).is_err());
 
         Ok(())
     }

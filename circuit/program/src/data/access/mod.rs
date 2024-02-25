@@ -14,7 +14,7 @@
 
 use crate::Identifier;
 use snarkvm_circuit_network::Aleo;
-use snarkvm_circuit_types::{environment::prelude::*, U32};
+use snarkvm_circuit_types::environment::prelude::*;
 
 use std::{
     fmt,
@@ -27,8 +27,6 @@ use std::{
 pub enum Access<A: Aleo> {
     /// Access a member of a register, struct, or record.
     Member(Identifier<A>),
-    /// Access an element of an array.
-    Index(U32<A>),
 }
 
 #[cfg(console)]
@@ -40,7 +38,6 @@ impl<A: Aleo> Inject for Access<A> {
     fn new(_m: Mode, plaintext: Self::Primitive) -> Self {
         match plaintext {
             Self::Primitive::Member(identifier) => Self::Member(Identifier::new(_m, identifier)),
-            Self::Primitive::Index(index) => Self::Index(U32::new(_m, index)),
         }
     }
 }
@@ -53,7 +50,6 @@ impl<A: Aleo> Eject for Access<A> {
     fn eject_mode(&self) -> Mode {
         match self {
             Self::Member(member) => member.eject_mode(),
-            Self::Index(index) => index.eject_mode(),
         }
     }
 
@@ -61,7 +57,6 @@ impl<A: Aleo> Eject for Access<A> {
     fn eject_value(&self) -> Self::Primitive {
         match self {
             Self::Member(identifier) => console::Access::Member(identifier.eject_value()),
-            Self::Index(index) => console::Access::Index(index.eject_value()),
         }
     }
 }

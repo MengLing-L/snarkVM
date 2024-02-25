@@ -42,7 +42,19 @@ mod tests;
 use console::{
     account::PrivateKey,
     network::prelude::*,
-    program::{Identifier, Literal, Locator, Plaintext, ProgramID, Record, Response, Value},
+    program::{
+        Identifier,
+        Literal,
+        LiteralType,
+        Locator,
+        Plaintext,
+        ProgramID,
+        Record,
+        Request,
+        Response,
+        Value,
+        ValueType,
+    },
     types::{Field, U16, U64},
 };
 use ledger_block::{Deployment, Execution, Fee, Input, Transition};
@@ -54,6 +66,7 @@ use synthesizer_program::{
     Finalize,
     FinalizeGlobalState,
     FinalizeOperation,
+    Function,
     Instruction,
     Program,
     RegistersLoad,
@@ -75,7 +88,7 @@ pub struct Process<N: Network> {
     /// The universal SRS.
     universal_srs: Arc<UniversalSRS<N>>,
     /// The mapping of program IDs to stacks.
-    stacks: IndexMap<ProgramID<N>, Arc<Stack<N>>>,
+    stacks: IndexMap<ProgramID<N>, Stack<N>>,
 }
 
 impl<N: Network> Process<N> {
@@ -115,12 +128,8 @@ impl<N: Network> Process<N> {
     /// If you intend to `execute` the program, use `deploy` and `finalize_deployment` instead.
     #[inline]
     pub fn add_program(&mut self, program: &Program<N>) -> Result<()> {
-        // Initialize the 'credits.aleo' program ID.
-        let credits_program_id = ProgramID::<N>::from_str("credits.aleo")?;
-        // If the program is not 'credits.aleo', compute the program stack, and add it to the process.
-        if program.id() != &credits_program_id {
-            self.add_stack(Stack::new(self, program)?);
-        }
+        // Compute the program stack, and add it to the process.
+        self.add_stack(Stack::new(self, program)?);
         Ok(())
     }
 
@@ -129,7 +138,7 @@ impl<N: Network> Process<N> {
     #[inline]
     pub fn add_stack(&mut self, stack: Stack<N>) {
         // Add the stack to the process.
-        self.stacks.insert(*stack.program_id(), Arc::new(stack));
+        self.stacks.insert(*stack.program_id(), stack);
     }
 }
 
@@ -202,7 +211,7 @@ impl<N: Network> Process<N> {
 
     /// Returns the stack for the given program ID.
     #[inline]
-    pub fn get_stack(&self, program_id: impl TryInto<ProgramID<N>>) -> Result<&Arc<Stack<N>>> {
+    pub fn get_stack(&self, program_id: impl TryInto<ProgramID<N>>) -> Result<&Stack<N>> {
         // Prepare the program ID.
         let program_id = program_id.try_into().map_err(|_| anyhow!("Invalid program ID"))?;
         // Retrieve the stack.
@@ -216,7 +225,7 @@ impl<N: Network> Process<N> {
     /// Returns the program for the given program ID.
     #[inline]
     pub fn get_program(&self, program_id: impl TryInto<ProgramID<N>>) -> Result<&Program<N>> {
-        Ok(self.get_stack(program_id)?.program())
+        self.get_stack(program_id).map(Stack::program)
     }
 
     /// Returns the proving key for the given program ID and function name.
@@ -380,7 +389,7 @@ function compute:
                     .unwrap();
                 assert_eq!(authorization.len(), 1);
                 // Execute the request.
-                let (_response, mut trace) = process.execute::<CurrentAleo, _>(authorization, rng).unwrap();
+                let (_response, mut trace) = process.execute::<CurrentAleo>(authorization).unwrap();
                 assert_eq!(trace.transitions().len(), 1);
 
                 // Prepare the trace.

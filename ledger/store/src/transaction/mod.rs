@@ -36,7 +36,6 @@ use ledger_block::{Deployment, Execution, Transaction};
 use synthesizer_program::Program;
 use synthesizer_snark::{Certificate, VerifyingKey};
 
-use aleo_std_storage::StorageMode;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
@@ -77,14 +76,14 @@ pub trait TransactionStorage<N: Network>: Clone + Send + Sync {
     fn fee_store(&self) -> &FeeStore<N, Self::FeeStorage>;
     /// Returns the transition store.
     fn transition_store(&self) -> &TransitionStore<N, Self::TransitionStorage> {
-        debug_assert!(self.deployment_store().storage_mode() == self.execution_store().storage_mode());
-        debug_assert!(self.execution_store().storage_mode() == self.fee_store().storage_mode());
+        debug_assert!(self.deployment_store().dev() == self.execution_store().dev());
+        debug_assert!(self.execution_store().dev() == self.fee_store().dev());
         self.fee_store().transition_store()
     }
 
-    /// Returns the storage mode.
-    fn storage_mode(&self) -> &StorageMode {
-        self.transition_store().storage_mode()
+    /// Returns the optional development ID.
+    fn dev(&self) -> Option<u16> {
+        self.transition_store().dev()
     }
 
     /// Starts an atomic batch write operation.
@@ -307,9 +306,9 @@ impl<N: Network, T: TransactionStorage<N>> TransactionStore<N, T> {
         self.storage.finish_atomic()
     }
 
-    /// Returns the storage mode.
-    pub fn storage_mode(&self) -> &StorageMode {
-        self.storage.storage_mode()
+    /// Returns the optional development ID.
+    pub fn dev(&self) -> Option<u16> {
+        self.storage.dev()
     }
 }
 

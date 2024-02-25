@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use core::{
-    fmt::{Debug, Display, Formatter},
+    fmt::Debug,
     ops::{Add, Mul, Sub},
 };
 
@@ -88,22 +88,16 @@ impl Mul<Count> for u64 {
     }
 }
 
-impl Display for Count {
-    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        write!(f, "Constants: {}, Public: {}, Private: {}, Constraints: {}", self.0, self.1, self.2, self.3)
-    }
-}
-
 /// A `Measurement` is a quantity that can be measured.
 /// The variants of the `Measurement` defines a condition associated with the measurable quantity.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Measurement<V: Copy + Debug + Display + Ord + Add<Output = V> + Sub<Output = V> + Mul<Output = V>> {
+pub enum Measurement<V: Copy + Debug + Ord + Add<Output = V> + Sub<Output = V> + Mul<Output = V>> {
     Exact(V),
     Range(V, V),
     UpperBound(V),
 }
 
-impl<V: Copy + Debug + Display + Ord + Add<Output = V> + Sub<Output = V> + Mul<Output = V>> Measurement<V> {
+impl<V: Copy + Debug + Ord + Add<Output = V> + Sub<Output = V> + Mul<Output = V>> Measurement<V> {
     /// Returns `true` if the value matches the metric.
     ///
     /// For an `Exact` metric, `value` must be equal to the exact value defined by the metric.
@@ -124,7 +118,7 @@ impl<V: Copy + Debug + Display + Ord + Add<Output = V> + Sub<Output = V> + Mul<O
     }
 }
 
-impl<V: Copy + Debug + Display + Ord + Add<Output = V> + Sub<Output = V> + Mul<Output = V>> Add for Measurement<V> {
+impl<V: Copy + Debug + Ord + Add<Output = V> + Sub<Output = V> + Mul<Output = V>> Add for Measurement<V> {
     type Output = Measurement<V>;
 
     /// Adds two variants of `Measurement` together, returning the newly-summed `Measurement`.
@@ -160,7 +154,7 @@ impl<V: Copy + Debug + Display + Ord + Add<Output = V> + Sub<Output = V> + Mul<O
     }
 }
 
-impl<V: Copy + Debug + Display + Ord + Add<Output = V> + Sub<Output = V> + Mul<Output = V>> Mul<V> for Measurement<V> {
+impl<V: Copy + Debug + Ord + Add<Output = V> + Sub<Output = V> + Mul<Output = V>> Mul<V> for Measurement<V> {
     type Output = Measurement<V>;
 
     /// Scales the `Measurement` by a value.
@@ -169,16 +163,6 @@ impl<V: Copy + Debug + Display + Ord + Add<Output = V> + Sub<Output = V> + Mul<O
             Measurement::Exact(value) => Measurement::Exact(value * other),
             Measurement::Range(lower, upper) => Measurement::Range(lower * other, upper * other),
             Measurement::UpperBound(bound) => Measurement::UpperBound(bound * other),
-        }
-    }
-}
-
-impl<V: Copy + Debug + Display + Ord + Add<Output = V> + Sub<Output = V> + Mul<Output = V>> Display for Measurement<V> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Measurement::Exact(value) => write!(f, "{}", value),
-            Measurement::Range(lower, upper) => write!(f, "[{}, {}]", lower, upper),
-            Measurement::UpperBound(bound) => write!(f, "<={}", bound),
         }
     }
 }

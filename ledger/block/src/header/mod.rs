@@ -22,13 +22,12 @@ mod serialize;
 mod string;
 mod verify;
 
-use crate::{Ratifications, Transactions};
+use crate::Transactions;
 use console::{
     network::prelude::*,
-    program::{HeaderLeaf, HeaderPath, HeaderTree, HEADER_DEPTH},
+    program::{HeaderLeaf, HeaderPath, HeaderTree, HEADER_DEPTH, RATIFICATIONS_DEPTH},
     types::Field,
 };
-use synthesizer_program::FinalizeOperation;
 
 /// The header for the block contains metadata that uniquely identifies the block.
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
@@ -43,8 +42,6 @@ pub struct Header<N: Network> {
     ratifications_root: Field<N>,
     /// The solutions root of the puzzle.
     solutions_root: Field<N>,
-    /// The subdag root of the authority.
-    subdag_root: Field<N>,
     /// The metadata of the block.
     metadata: Metadata<N>,
 }
@@ -57,7 +54,6 @@ impl<N: Network> Header<N> {
         finalize_root: Field<N>,
         ratifications_root: Field<N>,
         solutions_root: Field<N>,
-        subdag_root: Field<N>,
         metadata: Metadata<N>,
     ) -> Result<Self> {
         // Construct a new block header.
@@ -67,7 +63,6 @@ impl<N: Network> Header<N> {
             finalize_root,
             ratifications_root,
             solutions_root,
-            subdag_root,
             metadata,
         };
         // Ensure the header is valid.
@@ -119,11 +114,6 @@ impl<N: Network> Header<N> {
     /// Returns the solutions root in the block header.
     pub const fn solutions_root(&self) -> Field<N> {
         self.solutions_root
-    }
-
-    /// Returns the subdag root in the block header.
-    pub const fn subdag_root(&self) -> Field<N> {
-        self.subdag_root
     }
 
     /// Returns the metadata in the block header.

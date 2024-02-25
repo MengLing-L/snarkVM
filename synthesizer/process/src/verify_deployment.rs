@@ -23,7 +23,6 @@ impl<N: Network> Process<N> {
         rng: &mut R,
     ) -> Result<()> {
         let timer = timer!("Process::verify_deployment");
-
         // Retrieve the program ID.
         let program_id = deployment.program().id();
         // Ensure the program does not already exist in the process.

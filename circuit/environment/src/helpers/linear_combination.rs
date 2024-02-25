@@ -19,22 +19,12 @@ use core::{
     fmt,
     ops::{Add, AddAssign, Mul, Neg, Sub},
 };
+use indexmap::{map::Entry, IndexMap};
 
-// Before high level program operations are converted into constraints, they are first tracked as linear combinations.
-// Each linear combination corresponds to a portion or all of a single row of an R1CS matrix, and consists of:
-// \begin{itemize}
-//     \item constant and variable terms, representing the constraint system at 'compile time'.
-//           It can be seen as a multivariate polynomial, a sum of monomials.
-//     \item value term, representing the value of the assigned linear combination at 'proving time'.
-//           Which means it is the fully assigned subset of a row of a matrix.
-// \end{itemize}
-// The constant and variable terms directly refer to how often the R1CS variables are invoked in a row.
-// A full R1CS row is "completed" when we introduce a multiplication between three non-const linear combinations (a*b=c).
 #[derive(Clone)]
 pub struct LinearCombination<F: PrimeField> {
     constant: F,
-    /// The list of terms is kept sorted in order to speed up lookups.
-    terms: Vec<(Variable<F>, F)>,
+    terms: IndexMap<Variable<F>, F>,
     /// The value of this linear combination, defined as the sum of the `terms` and `constant`.
     value: F,
 }
@@ -60,7 +50,7 @@ impl<F: PrimeField> LinearCombination<F> {
     pub fn is_public(&self) -> bool {
         self.constant.is_zero()
             && self.terms.len() == 1
-            && match self.terms.first() {
+            && match self.terms.iter().next() {
                 Some((Variable::Public(..), coefficient)) => *coefficient == F::one(),
                 _ => false,
             }
@@ -130,7 +120,7 @@ impl<F: PrimeField> LinearCombination<F> {
     }
 
     /// Returns the terms (excluding the constant value) in the linear combination.
-    pub(super) fn to_terms(&self) -> &[(Variable<F>, F)] {
+    pub(super) fn to_terms(&self) -> &IndexMap<Variable<F>, F> {
         &self.terms
     }
 
@@ -144,7 +134,6 @@ impl<F: PrimeField> LinearCombination<F> {
     }
 
     /// Returns the number of addition gates in the linear combination.
-    #[cfg(test)]
     pub(super) fn num_additions(&self) -> u64 {
         // Increment by one if the constant is nonzero and the number of terms is nonzero.
         match !self.constant.is_zero() && !self.terms.is_empty() {
@@ -197,18 +186,18 @@ impl<F: PrimeField> From<&[Variable<F>]> for LinearCombination<F> {
             match variable.is_constant() {
                 true => output.constant += variable.value(),
                 false => {
-                    match output.terms.binary_search_by(|(v, _)| v.cmp(variable)) {
-                        Ok(idx) => {
+                    match output.terms.entry(variable.clone()) {
+                        Entry::Occupied(mut entry) => {
                             // Increment the existing coefficient by 1.
-                            output.terms[idx].1 += F::one();
+                            *entry.get_mut() += F::one();
                             // If the coefficient of the term is now zero, remove the entry.
-                            if output.terms[idx].1.is_zero() {
-                                output.terms.remove(idx);
+                            if entry.get().is_zero() {
+                                entry.remove_entry();
                             }
                         }
-                        Err(idx) => {
+                        Entry::Vacant(entry) => {
                             // Insert the variable and a coefficient of 1 as a new term.
-                            output.terms.insert(idx, (variable.clone(), F::one()));
+                            entry.insert(F::one());
                         }
                     }
                 }
@@ -336,18 +325,18 @@ impl<F: PrimeField> AddAssign<&LinearCombination<F>> for LinearCombination<F> {
                 match variable.is_constant() {
                     true => panic!("Malformed linear combination found"),
                     false => {
-                        match self.terms.binary_search_by(|(v, _)| v.cmp(variable)) {
-                            Ok(idx) => {
+                        match self.terms.entry(variable.clone()) {
+                            Entry::Occupied(mut entry) => {
                                 // Add the coefficient to the existing coefficient for this term.
-                                self.terms[idx].1 += *coefficient;
+                                *entry.get_mut() += *coefficient;
                                 // If the coefficient of the term is now zero, remove the entry.
-                                if self.terms[idx].1.is_zero() {
-                                    self.terms.remove(idx);
+                                if entry.get().is_zero() {
+                                    entry.remove_entry();
                                 }
                             }
-                            Err(idx) => {
+                            Entry::Vacant(entry) => {
                                 // Insert the variable and coefficient as a new term.
-                                self.terms.insert(idx, (variable.clone(), *coefficient));
+                                entry.insert(*coefficient);
                             }
                         }
                     }
@@ -433,14 +422,7 @@ impl<F: PrimeField> Mul<&F> for LinearCombination<F> {
     fn mul(self, coefficient: &F) -> Self::Output {
         let mut output = self;
         output.constant *= coefficient;
-        output.terms = output
-            .terms
-            .into_iter()
-            .filter_map(|(v, current_coefficient)| {
-                let res = current_coefficient * coefficient;
-                (!res.is_zero()).then_some((v, res))
-            })
-            .collect();
+        output.terms.iter_mut().for_each(|(_, current_coefficient)| *current_coefficient *= coefficient);
         output.value *= coefficient;
         output
     }
@@ -467,7 +449,11 @@ impl<F: PrimeField> fmt::Debug for LinearCombination<F> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         let mut output = format!("Constant({})", self.constant);
 
-        for (variable, coefficient) in &self.terms {
+        // Sort the terms.
+        let mut terms = self.terms.clone();
+        terms.sort_keys();
+
+        for (variable, coefficient) in &terms {
             output += &match (variable.mode(), coefficient.is_one()) {
                 (Mode::Constant, _) => panic!("Malformed linear combination at: ({coefficient} * {variable:?})"),
                 (_, true) => format!(" + {variable:?}"),
@@ -545,7 +531,7 @@ mod tests {
         let two = one + one;
         let four = two + two;
 
-        let start = LinearCombination::from(Variable::Public(Rc::new((1, one))));
+        let start = LinearCombination::from(Variable::Public(1, Rc::new(one)));
         assert!(!start.is_constant());
         assert_eq!(one, start.value());
 
@@ -555,7 +541,7 @@ mod tests {
         assert_eq!(zero, candidate.constant);
         assert_eq!(1, candidate.terms.len());
 
-        let (candidate_variable, candidate_coefficient) = candidate.terms.first().unwrap();
+        let (candidate_variable, candidate_coefficient) = candidate.terms.iter().next().unwrap();
         assert!(candidate_variable.is_public());
         assert_eq!(one, candidate_variable.value());
         assert_eq!(four, *candidate_coefficient);

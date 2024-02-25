@@ -82,19 +82,19 @@ impl<N: Network> Transaction<N> {
 impl<N: Network> Transaction<N> {
     /// Returns `true` if the transaction is a deploy transaction.
     #[inline]
-    pub const fn is_deploy(&self) -> bool {
+    pub fn is_deploy(&self) -> bool {
         matches!(self, Self::Deploy(..))
     }
 
     /// Returns `true` if the transaction is an execute transaction.
     #[inline]
-    pub const fn is_execute(&self) -> bool {
+    pub fn is_execute(&self) -> bool {
         matches!(self, Self::Execute(..))
     }
 
     /// Returns `true` if the transaction is a fee transaction.
     #[inline]
-    pub const fn is_fee(&self) -> bool {
+    pub fn is_fee(&self) -> bool {
         matches!(self, Self::Fee(..))
     }
 }
@@ -182,33 +182,13 @@ impl<N: Network> Transaction<N> {
         }
     }
 
-    /// Returns the transaction total fee.
+    /// Returns the transaction fee.
     pub fn fee_amount(&self) -> Result<U64<N>> {
         match self {
             Self::Deploy(_, _, _, fee) => fee.amount(),
             Self::Execute(_, _, Some(fee)) => fee.amount(),
             Self::Execute(_, _, None) => Ok(U64::zero()),
             Self::Fee(_, fee) => fee.amount(),
-        }
-    }
-
-    /// Returns the transaction base fee.
-    pub fn base_fee_amount(&self) -> Result<U64<N>> {
-        match self {
-            Self::Deploy(_, _, _, fee) => fee.base_amount(),
-            Self::Execute(_, _, Some(fee)) => fee.base_amount(),
-            Self::Execute(_, _, None) => Ok(U64::zero()),
-            Self::Fee(_, fee) => fee.base_amount(),
-        }
-    }
-
-    /// Returns the transaction priority fee.
-    pub fn priority_fee_amount(&self) -> Result<U64<N>> {
-        match self {
-            Self::Deploy(_, _, _, fee) => fee.priority_amount(),
-            Self::Execute(_, _, Some(fee)) => fee.priority_amount(),
-            Self::Execute(_, _, None) => Ok(U64::zero()),
-            Self::Fee(_, fee) => fee.priority_amount(),
         }
     }
 
@@ -259,7 +239,7 @@ impl<N: Network> Transaction<N> {
                 false => None,
             },
             // Check the execution and fee.
-            Self::Execute(_, execution, fee) => execution.get_transition(transition_id).or_else(|| {
+            Self::Execute(_, execution, fee) => execution.find_transition(transition_id).or_else(|| {
                 fee.as_ref().and_then(|fee| match fee.id() == transition_id {
                     true => Some(fee.transition()),
                     false => None,

@@ -15,13 +15,17 @@
 use super::*;
 
 impl<N: Network> Parser for MapValue<N> {
-    /// Parses a string into a value statement of the form `value as {plaintext_type}.public;`.
+    /// Parses a string into the value statement of the form `value {name} as {plaintext_type}.public;`.
     #[inline]
     fn parse(string: &str) -> ParserResult<Self> {
         // Parse the whitespace and comments from the string.
         let (string, _) = Sanitizer::parse(string)?;
         // Parse the keyword from the string.
         let (string, _) = tag(Self::type_name())(string)?;
+        // Parse the whitespace from the string.
+        let (string, _) = Sanitizer::parse_whitespaces(string)?;
+        // Parse the name from the string.
+        let (string, name) = Identifier::parse(string)?;
         // Parse the whitespace from the string.
         let (string, _) = Sanitizer::parse_whitespaces(string)?;
         // Parse the "as" from the string.
@@ -35,7 +39,7 @@ impl<N: Network> Parser for MapValue<N> {
         // Parse the semicolon from the string.
         let (string, _) = tag(";")(string)?;
         // Return the value statement.
-        Ok((string, Self { plaintext_type }))
+        Ok((string, Self { name, plaintext_type }))
     }
 }
 
@@ -69,8 +73,9 @@ impl<N: Network> Display for MapValue<N> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(
             f,
-            "{type_} as {plaintext_type}.public;",
+            "{type_} {name} as {plaintext_type}.public;",
             type_ = Self::type_name(),
+            name = self.name,
             plaintext_type = self.plaintext_type
         )
     }
@@ -86,7 +91,8 @@ mod tests {
     #[test]
     fn test_value_parse() -> Result<()> {
         // Literal
-        let value = MapValue::<CurrentNetwork>::parse("value as field.public;").unwrap().1;
+        let value = MapValue::<CurrentNetwork>::parse("value abcd as field.public;").unwrap().1;
+        assert_eq!(value.name(), &Identifier::<CurrentNetwork>::from_str("abcd")?);
         assert_eq!(value.plaintext_type(), &PlaintextType::<CurrentNetwork>::from_str("field")?);
 
         Ok(())
@@ -95,7 +101,7 @@ mod tests {
     #[test]
     fn test_value_display() {
         // Literal
-        let value = MapValue::<CurrentNetwork>::parse("value as field.public;").unwrap().1;
-        assert_eq!(format!("{value}"), "value as field.public;");
+        let value = MapValue::<CurrentNetwork>::parse("value abc as field.public;").unwrap().1;
+        assert_eq!(format!("{value}"), "value abc as field.public;");
     }
 }

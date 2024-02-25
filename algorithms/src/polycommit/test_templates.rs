@@ -106,7 +106,7 @@ pub fn bad_degree_bound_test<E: PairingEngine, S: AlgebraicSponge<E::Fq, 2>>() -
         let mut values = Evaluations::new();
         let point = E::Fr::rand(rng);
         for (i, label) in labels.iter().enumerate() {
-            query_set.insert((label.clone(), ("rand".into(), point)));
+            query_set.insert((label.clone(), (0, ("rand".into(), point))));
             let value = polynomials[i].evaluate(point);
             values.insert((label.clone(), point), value);
         }
@@ -116,9 +116,10 @@ pub fn bad_degree_bound_test<E: PairingEngine, S: AlgebraicSponge<E::Fq, 2>>() -
         let proof = SonicKZG10::batch_open(
             universal_prover,
             &ck,
-            polynomials.iter(),
+            &polynomials,
+            &comms,
             &query_set,
-            rands.iter(),
+            &rands,
             &mut sponge_for_open,
         )?;
         let mut sponge_for_check = S::new();
@@ -201,7 +202,7 @@ pub fn lagrange_test_template<E: PairingEngine, S: AlgebraicSponge<E::Fq, 2>>()
         for point_id in 0..num_points_in_query_set {
             let point = E::Fr::rand(rng);
             for (polynomial, label) in polynomials.iter().zip_eq(labels.iter()) {
-                query_set.insert((label.clone(), (format!("rand_{point_id}"), point)));
+                query_set.insert((label.clone(), (0, (format!("rand_{point_id}"), point))));
                 let value = polynomial.evaluate(point);
                 values.insert((label.clone(), point), value);
             }
@@ -212,9 +213,10 @@ pub fn lagrange_test_template<E: PairingEngine, S: AlgebraicSponge<E::Fq, 2>>()
         let proof = SonicKZG10::batch_open(
             universal_prover,
             &ck,
-            polynomials.iter(),
+            &polynomials,
+            &comms,
             &query_set,
-            rands.iter(),
+            &rands,
             &mut sponge_for_open,
         )?;
         let mut sponge_for_check = S::new();
@@ -263,7 +265,7 @@ where
     let max_degree = max_degree.unwrap_or_else(|| distributions::Uniform::from(8..=64).sample(rng));
     let pp = SonicKZG10::<E, S>::load_srs(max_degree)?;
     let universal_prover = &pp.to_universal_prover().unwrap();
-    let supported_degree_bounds = [1 << 10, 1 << 15, 1 << 20, 1 << 25, 1 << 30];
+    let supported_degree_bounds = vec![1 << 10, 1 << 15, 1 << 20, 1 << 25, 1 << 30];
 
     for _ in 0..num_iters {
         let supported_degree =
@@ -331,7 +333,7 @@ where
         for point_id in 0..num_points_in_query_set {
             let point = E::Fr::rand(rng);
             for (polynomial, label) in polynomials.iter().zip_eq(labels.iter()) {
-                query_set.insert((label.clone(), (format!("rand_{point_id}"), point)));
+                query_set.insert((label.clone(), (0, (format!("rand_{point_id}"), point))));
                 let value = polynomial.evaluate(point);
                 values.insert((label.clone(), point), value);
             }
@@ -342,9 +344,10 @@ where
         let proof = SonicKZG10::batch_open(
             universal_prover,
             &ck,
-            polynomials.iter(),
+            &polynomials,
+            &comms,
             &query_set,
-            rands.iter(),
+            &rands,
             &mut sponge_for_open,
         )?;
         let mut sponge_for_check = S::new();
@@ -391,7 +394,7 @@ fn equation_test_template<E: PairingEngine, S: AlgebraicSponge<E::Fq, 2>>(
     let max_degree = max_degree.unwrap_or_else(|| distributions::Uniform::from(8..=64).sample(rng));
     let pp = SonicKZG10::<E, S>::load_srs(max_degree)?;
     let universal_prover = &pp.to_universal_prover().unwrap();
-    let supported_degree_bounds = [1 << 10, 1 << 15, 1 << 20, 1 << 25, 1 << 30];
+    let supported_degree_bounds = vec![1 << 10, 1 << 15, 1 << 20, 1 << 25, 1 << 30];
 
     for _ in 0..num_iters {
         let supported_degree =
@@ -489,7 +492,7 @@ fn equation_test_template<E: PairingEngine, S: AlgebraicSponge<E::Fq, 2>>(
                 if !lc.is_empty() {
                     linear_combinations.push(lc);
                     // Insert query
-                    query_set.insert((label.clone(), (format!("rand_{i}"), point)));
+                    query_set.insert((label.clone(), (0, (format!("rand_{i}"), point))));
                 }
             }
         }
@@ -504,9 +507,10 @@ fn equation_test_template<E: PairingEngine, S: AlgebraicSponge<E::Fq, 2>>(
             universal_prover,
             &ck,
             &linear_combinations,
-            polynomials,
-            &rands,
+            &polynomials,
+            &comms,
             &query_set,
+            &rands,
             &mut sponge_for_open,
         )?;
         println!("Generated proof");
@@ -522,6 +526,10 @@ fn equation_test_template<E: PairingEngine, S: AlgebraicSponge<E::Fq, 2>>(
         )?;
         if !result {
             println!("Failed with {num_polynomials} polynomials, num_points_in_query_set: {num_points_in_query_set:?}");
+            println!("Degree of polynomials:");
+            for poly in polynomials {
+                println!("Degree: {:?}", poly.degree());
+            }
         }
         assert!(result, "proof was incorrect, equations: {linear_combinations:#?}");
 

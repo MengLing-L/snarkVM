@@ -68,9 +68,3 @@ impl<E: Environment> Deref for Boolean<E> {
         &self.boolean
     }
 }
-
-impl<E: Environment> PartialEq<Boolean<E>> for bool {
-    fn eq(&self, other: &Boolean<E>) -> bool {
-        *self == **other
-    }
-}

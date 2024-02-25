@@ -20,21 +20,14 @@ impl<N: Network> FromBytes for Committee<N> {
         // Read the version.
         let version = u8::read_le(&mut reader)?;
         // Ensure the version is valid.
-        if version != 1 {
+        if version != 0 {
             return Err(error("Invalid committee version"));
         }
 
         // Read the starting round.
         let starting_round = u64::read_le(&mut reader)?;
         // Read the number of members.
-        let num_members = u16::read_le(&mut reader)?;
-        // Ensure the number of members is within the allowed limit.
-        if num_members > Self::MAX_COMMITTEE_SIZE {
-            return Err(error(format!(
-                "Committee cannot exceed {} members, found {num_members}",
-                Self::MAX_COMMITTEE_SIZE,
-            )));
-        }
+        let num_members = u32::read_le(&mut reader)?;
         // Read the members.
         let mut members = IndexMap::with_capacity(num_members as usize);
         for _ in 0..num_members {
@@ -63,11 +56,11 @@ impl<N: Network> ToBytes for Committee<N> {
     /// Writes the committee to the buffer.
     fn write_le<W: Write>(&self, mut writer: W) -> IoResult<()> {
         // Write the version.
-        1u8.write_le(&mut writer)?;
+        0u8.write_le(&mut writer)?;
         // Write the starting round.
         self.starting_round.write_le(&mut writer)?;
         // Write the number of members.
-        u16::try_from(self.members.len()).map_err(|e| error(e.to_string()))?.write_le(&mut writer)?;
+        u32::try_from(self.members.len()).map_err(|e| error(e.to_string()))?.write_le(&mut writer)?;
         // Write the members.
         for (address, (stake, is_open)) in &self.members {
             // Write the address.
@@ -85,6 +78,9 @@ impl<N: Network> ToBytes for Committee<N> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use console::network::Testnet3;
+
+    type CurrentNetwork = Testnet3;
 
     #[test]
     fn test_bytes() {
@@ -94,6 +90,7 @@ mod tests {
             // Check the byte representation.
             let expected_bytes = expected.to_bytes_le().unwrap();
             assert_eq!(expected, Committee::read_le(&expected_bytes[..]).unwrap());
+            assert!(Committee::<CurrentNetwork>::read_le(&expected_bytes[1..]).is_err());
         }
     }
 }

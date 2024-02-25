@@ -25,7 +25,6 @@ use crate::{
         ahp::{indexer::CircuitId, verifier, AHPForR1CS},
         matrices::transpose,
         prover::{self, MatrixSums, ThirdMessage},
-        selectors::apply_randomized_selector,
         AHPError,
         Matrix,
         SNARKMode,
@@ -48,7 +47,7 @@ struct LinevalInstance<F: PrimeField> {
     sum: F,
 }
 
-impl<F: PrimeField, SM: SNARKMode> AHPForR1CS<F, SM> {
+impl<F: PrimeField, MM: SNARKMode> AHPForR1CS<F, MM> {
     /// Output the number of oracles sent by the prover in the third round.
     pub const fn num_third_round_oracles() -> usize {
         2
@@ -69,16 +68,16 @@ impl<F: PrimeField, SM: SNARKMode> AHPForR1CS<F, SM> {
     pub fn prover_third_round<'a, R: RngCore>(
         verifier_message: &verifier::FirstMessage<F>,
         verifier_second_message: &verifier::SecondMessage<F>,
-        mut state: prover::State<'a, F, SM>,
+        mut state: prover::State<'a, F, MM>,
         _r: &mut R,
-    ) -> Result<(prover::ThirdMessage<F>, prover::ThirdOracles<F>, prover::State<'a, F, SM>), AHPError> {
+    ) -> Result<(prover::ThirdMessage<F>, prover::ThirdOracles<F>, prover::State<'a, F, MM>), AHPError> {
         let round_time = start_timer!(|| "AHP::Prover::ThirdRound");
 
         let zk_bound = Self::zk_bound();
 
         let max_variable_domain = state.max_variable_domain;
 
-        let verifier::FirstMessage { batch_combiners } = verifier_message;
+        let verifier::FirstMessage { batch_combiners, .. } = verifier_message;
         let verifier::SecondMessage { alpha, eta_b, eta_c } = verifier_second_message;
 
         let assignments = Self::calculate_assignments(&mut state)?;
@@ -123,7 +122,7 @@ impl<F: PrimeField, SM: SNARKMode> AHPForR1CS<F, SM> {
     }
 
     fn calculate_lineval_sumcheck_witness(
-        state: &mut prover::State<F, SM>,
+        state: &mut prover::State<F, MM>,
         batch_combiners: &BTreeMap<CircuitId, verifier::BatchCombiners<F>>,
         assignments: BTreeMap<CircuitId, Vec<DensePolynomial<F>>>,
         matrix_transposes: BTreeMap<CircuitId, BTreeMap<String, Matrix<F>>>,
@@ -140,6 +139,7 @@ impl<F: PrimeField, SM: SNARKMode> AHPForR1CS<F, SM> {
         // Compute lineval sumcheck witnesses
         let mut job_pool = ExecutionPool::with_capacity(total_instances * 3);
         for ((((circuit, circuit_specific_state), batch_combiner), assignments_i), matrix_transposes_i) in state
+        // for (((circuit, circuit_specific_state), batch_combiner), first_round_oracles) in state
             .circuit_specific_states
             .iter_mut()
             .zip_eq(batch_combiners.values())
@@ -158,6 +158,33 @@ impl<F: PrimeField, SM: SNARKMode> AHPForR1CS<F, SM> {
             {
                 for (label, matrix_combiner) in itertools::izip!(matrix_labels, matrix_combiners) {
                     let matrix_transpose = &matrix_transposes_i[label];
+                    // let columns_to_non_zero_indices_time =
+                    //     start_timer!(|| format!("Precomputing columns_to_non_zero_indices for circuit {}", circuit.id));
+                    // let mut c_i_to_k = BTreeMap::new(); // mapping of which column indices are used in which k non-zero entries
+                    // c_i_to_k.insert("a", non_zero_entries_per_column(&circuit.a, variable_domain, input_domain)?);
+                    // c_i_to_k.insert("b", non_zero_entries_per_column(&circuit.b, variable_domain, input_domain)?);
+                    // c_i_to_k.insert("c", non_zero_entries_per_column(&circuit.c, variable_domain, input_domain)?);
+                    // end_timer!(columns_to_non_zero_indices_time);
+
+                    // for (_j, ((instance_combiner, first_round_oracle_entry), x_poly)) in
+                    //     instance_combiners.iter().zip_eq(first_round_oracles).zip_eq(x_polys).enumerate()
+                    // {
+                    //     let z_time = start_timer!(move || format!("Compute z poly for circuit {} {}", circuit.id, _j));
+                    //     let mut assignment = first_round_oracle_entry
+                    //         .w_poly
+                    //         .polynomial()
+                    //         .as_dense()
+                    //         .unwrap()
+                    //         .mul_by_vanishing_poly(*input_domain);
+                    //     // Zip safety: `x_poly` is smaller than `z_poly`.
+                    //     assignment.coeffs.iter_mut().zip(&x_poly.coeffs).for_each(|(z, x)| *z += x);
+                    //     end_timer!(z_time);
+
+                    //     for ((label, matrix_combiner), arith) in
+                    //         matrix_labels.into_iter().zip_eq(matrix_combiners).zip_eq(matrix_arith)
+                    //     {
+                    //         let lineval_assignment = assignment.clone(); // further below, PolyMultiplier does not want just a reference
+                    //         let lineval_c_i_to_k = c_i_to_k[label].clone();
                     let combiner = circuit_combiner * instance_combiner * matrix_combiner;
                     job_pool.add_job(move || {
                         Self::calculate_lineval_sumcheck_instance_witness(
@@ -205,9 +232,9 @@ impl<F: PrimeField, SM: SNARKMode> AHPForR1CS<F, SM> {
             }
         }
 
-        let mask_poly = state.first_round_oracles.as_ref().unwrap().mask_poly.as_ref();
-        assert_eq!(SM::ZK, mask_poly.is_some());
-        assert_eq!(!SM::ZK, mask_poly.is_none());
+        let mask_poly = state.second_round_oracles.as_ref().unwrap().mask_poly_1.as_ref();
+        assert_eq!(MM::ZK, mask_poly.is_some());
+        assert_eq!(!MM::ZK, mask_poly.is_none());
         let mask_poly = &mask_poly.map_or(DensePolynomial::zero(), |p| p.polynomial().into_dense());
         let (mut h_1_mask, mut xg_1_mask) = mask_poly.divide_by_vanishing_poly(*max_variable_domain).unwrap();
         h_1_sum += &core::mem::take(&mut h_1_mask);
@@ -218,24 +245,22 @@ impl<F: PrimeField, SM: SNARKMode> AHPForR1CS<F, SM> {
         Ok((h_1_sum, xg_1_sum, msg))
     }
 
-    pub(in crate::snark::varuna) fn calculate_assignments(
-        state: &mut prover::State<F, SM>,
-    ) -> Result<BTreeMap<CircuitId, Vec<DensePolynomial<F>>>> {
+    fn calculate_assignments(state: &mut prover::State<F, MM>) -> Result<BTreeMap<CircuitId, Vec<DensePolynomial<F>>>> {
         let assignments_time = start_timer!(|| "Calculate assignments");
         let assignments: BTreeMap<_, _> = state
             .circuit_specific_states
             .iter()
             .zip_eq(state.first_round_oracles.as_ref().unwrap().batches.values())
-            .map(|((circuit, circuit_specific_state), w_polys)| {
+            .map(|((circuit, circuit_specific_state), oracles)| {
                 let x_polys = &circuit_specific_state.x_polys;
                 let input_domain = &circuit_specific_state.input_domain;
-                let assignments_i: Vec<_> = cfg_iter!(w_polys)
+                let assignments_i: Vec<_> = cfg_iter!(oracles)
                     .zip_eq(x_polys)
                     .enumerate()
-                    .map(|(_j, (w_poly, x_poly))| {
+                    .map(|(_j, (oracles, x_poly))| {
                         let z_time = start_timer!(move || format!("Compute z poly for circuit {} {}", circuit.id, _j));
                         let mut assignment =
-                            w_poly.0.polynomial().as_dense().unwrap().mul_by_vanishing_poly(*input_domain);
+                            oracles.w_poly.polynomial().as_dense().unwrap().mul_by_vanishing_poly(*input_domain);
                         // Zip safety: `x_poly` is smaller than `z_poly`.
                         assignment.coeffs.iter_mut().zip(&x_poly.coeffs).for_each(|(z, x)| *z += x);
                         end_timer!(z_time);
@@ -250,7 +275,7 @@ impl<F: PrimeField, SM: SNARKMode> AHPForR1CS<F, SM> {
     }
 
     fn calculate_matrix_transpose(
-        state: &mut prover::State<F, SM>,
+        state: &mut prover::State<F, MM>,
     ) -> Result<BTreeMap<CircuitId, BTreeMap<String, Matrix<F>>>> {
         let transpose_time = start_timer!(|| "Transpose of matrices");
         let mut job_pool = ExecutionPool::with_capacity(state.circuit_specific_states.len() * 3);
@@ -319,7 +344,7 @@ impl<F: PrimeField, SM: SNARKMode> AHPForR1CS<F, SM> {
         end_timer!(z_m_at_alpha_time);
 
         let (h_1_i, xg_1_i) =
-            apply_randomized_selector(&mut z_m_at_alpha, combiner, max_variable_domain, variable_domain, true)?;
+            Self::apply_randomized_selector(&mut z_m_at_alpha, combiner, max_variable_domain, variable_domain, true)?;
         let xg_1_i = xg_1_i.ok_or(anyhow::anyhow!("Expected remainder when applying selector"))?;
 
         end_timer!(sumcheck_time);

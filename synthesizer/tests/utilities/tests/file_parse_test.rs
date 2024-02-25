@@ -34,6 +34,7 @@ impl FileParseTest {
 
 impl ExpectedTest for FileParseTest {
     type Output = String;
+    type Test = String;
 
     /// Loads the test from a given path.
     fn load<P: AsRef<Path>>(test_path: P, expectation_dir: P) -> Self {

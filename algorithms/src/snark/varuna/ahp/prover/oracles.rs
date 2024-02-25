@@ -24,40 +24,63 @@ use crate::{
 /// The first set of prover oracles.
 #[derive(Debug, Clone)]
 pub struct FirstOracles<F: PrimeField> {
-    pub(in crate::snark::varuna) batches: BTreeMap<CircuitId, Vec<WitnessPoly<F>>>,
-    /// The sum-check hiding polynomial.
-    pub mask_poly: Option<LabeledPolynomial<F>>,
+    pub(in crate::snark::varuna) batches: BTreeMap<CircuitId, Vec<SingleEntry<F>>>,
 }
 
 impl<F: PrimeField> FirstOracles<F> {
     /// Iterate over the polynomials output by the prover in the first round.
     pub fn iter(&self) -> impl Iterator<Item = &'_ LabeledPolynomial<F>> {
-        self.batches.values().flat_map(|b| b.iter()).flat_map(|b| b.iter()).chain(self.mask_poly.as_ref())
-    }
-
-    /// Iterate over the polynomials output by the prover in the first round.
-    pub fn into_iter(self) -> impl Iterator<Item = LabeledPolynomial<F>> {
-        self.batches.into_values().flat_map(|b| b.into_iter()).map(|b| b.0).chain(self.mask_poly)
+        self.batches.values().flat_map(|b| b.iter()).flat_map(|b| b.iter())
     }
 
     pub fn matches_info(&self, info: &BTreeMap<PolynomialLabel, PolynomialInfo>) -> bool {
         self.batches.values().all(|b| b.iter().all(|b| b.matches_info(info)))
-            && self.mask_poly.as_ref().map_or(true, |p| Some(p.info()) == info.get(p.label()))
     }
 }
 
 /// The LDE of `w`.
 #[derive(Debug, Clone)]
-pub(in crate::snark::varuna) struct WitnessPoly<F: PrimeField>(pub(in crate::snark::varuna) LabeledPolynomial<F>);
+pub(in crate::snark::varuna) struct SingleEntry<F: PrimeField> {
+    /// The LDE of `w`.
+    pub(super) w_poly: LabeledPolynomial<F>,
+    /// The LDE of multiplicities `M`. Each instance (subject to lookups) may have unique multiplicities
+    pub(super) multiplicities: Option<LabeledPolynomial<F>>,
+}
 
-impl<F: PrimeField> WitnessPoly<F> {
+impl<F: PrimeField> SingleEntry<F> {
     /// Iterate over the polynomials output by the prover in the first round.
     pub fn iter(&self) -> impl Iterator<Item = &LabeledPolynomial<F>> {
-        [(&self.0)].into_iter()
+        let w_poly = &self.w_poly;
+        let multiplicities = &self.multiplicities;
+        // TODO: make sure multiplicities is optionally iterated
+        [w_poly].into_iter().chain(multiplicities)
     }
 
     pub fn matches_info(&self, info: &BTreeMap<PolynomialLabel, PolynomialInfo>) -> bool {
-        Some(self.0.info()) == info.get(self.0.label())
+        let mult_matches = if let Some(multiplicities) = self.multiplicities.as_ref() {
+            Some(multiplicities.info()) == info.get(multiplicities.label())
+        } else {
+            true
+        };
+        Some(self.w_poly.info()) == info.get(self.w_poly.label()) && mult_matches
+    }
+}
+
+/// The prover oracles needed for lookups.
+#[derive(Debug)]
+pub struct LookupOracles<F: PrimeField> {
+    /// The polynomials `g_0` resulting from the lookup rational sumcheck.
+    pub gs: BTreeMap<CircuitId, Vec<LabeledPolynomial<F>>>,
+}
+
+impl<F: PrimeField> LookupOracles<F> {
+    /// Iterate over the polynomials output by the prover in the lookup round.
+    pub fn iter(&self) -> impl Iterator<Item = &LabeledPolynomial<F>> {
+        self.gs.values().flatten()
+    }
+
+    pub fn matches_info(&self, info: &BTreeMap<PolynomialLabel, PolynomialInfo>) -> bool {
+        self.gs.values().flatten().all(|g_0| Some(g_0.info()) == info.get(g_0.label()))
     }
 }
 
@@ -66,21 +89,22 @@ impl<F: PrimeField> WitnessPoly<F> {
 pub struct SecondOracles<F: PrimeField> {
     /// The polynomial `h` resulting from the first zerocheck.
     pub h_0: LabeledPolynomial<F>,
+    /// The rowcheck sumcheck hiding polynomial.
+    pub mask_poly_0: Option<LabeledPolynomial<F>>,
+    /// The lineval sumcheck hiding polynomial.
+    pub mask_poly_1: Option<LabeledPolynomial<F>>,
 }
 
 impl<F: PrimeField> SecondOracles<F> {
     /// Iterate over the polynomials output by the prover in the second round.
     pub fn iter(&self) -> impl Iterator<Item = &LabeledPolynomial<F>> {
-        [&self.h_0].into_iter()
-    }
-
-    /// Iterate over the polynomials output by the prover in the second round.
-    pub fn into_iter(self) -> impl Iterator<Item = LabeledPolynomial<F>> {
-        [self.h_0].into_iter()
+        [&self.h_0].into_iter().chain(self.mask_poly_1.as_ref()).chain(self.mask_poly_0.as_ref())
     }
 
     pub fn matches_info(&self, info: &BTreeMap<PolynomialLabel, PolynomialInfo>) -> bool {
         Some(self.h_0.info()) == info.get(self.h_0.label())
+            && self.mask_poly_1.as_ref().map_or(true, |p| Some(p.info()) == info.get(p.label()))
+            && self.mask_poly_0.as_ref().map_or(true, |p| Some(p.info()) == info.get(p.label()))
     }
 }
 
@@ -99,11 +123,6 @@ impl<F: PrimeField> ThirdOracles<F> {
         [&self.g_1, &self.h_1].into_iter()
     }
 
-    /// Iterate over the polynomials output by the prover in the third round.
-    pub fn into_iter(self) -> impl Iterator<Item = LabeledPolynomial<F>> {
-        [self.g_1, self.h_1].into_iter()
-    }
-
     pub fn matches_info(&self, info: &BTreeMap<PolynomialLabel, PolynomialInfo>) -> bool {
         Some(self.h_1.info()) == info.get(self.h_1.label()) && Some(self.g_1.info()) == info.get(self.g_1.label())
     }
@@ -112,17 +131,17 @@ impl<F: PrimeField> ThirdOracles<F> {
 /// The fourth set of prover oracles.
 #[derive(Debug)]
 pub struct FourthOracles<F: PrimeField> {
-    pub(in crate::snark::varuna) gs: BTreeMap<CircuitId, MatrixGs<F>>,
+    pub(super) gs: BTreeMap<CircuitId, MatrixGs<F>>,
 }
 
 #[derive(Debug)]
-pub(in crate::snark::varuna) struct MatrixGs<F: PrimeField> {
+pub(super) struct MatrixGs<F: PrimeField> {
     /// The polynomial `g_a` resulting from the second sumcheck.
-    pub(in crate::snark::varuna) g_a: LabeledPolynomial<F>,
+    pub(super) g_a: LabeledPolynomial<F>,
     /// The polynomial `g_b` resulting from the second sumcheck.
-    pub(in crate::snark::varuna) g_b: LabeledPolynomial<F>,
+    pub(super) g_b: LabeledPolynomial<F>,
     /// The polynomial `g_c` resulting from the second sumcheck.
-    pub(in crate::snark::varuna) g_c: LabeledPolynomial<F>,
+    pub(super) g_c: LabeledPolynomial<F>,
 }
 
 impl<F: PrimeField> MatrixGs<F> {
@@ -137,11 +156,6 @@ impl<F: PrimeField> FourthOracles<F> {
     /// Iterate over the polynomials output by the prover in the fourth round.
     pub fn iter(&self) -> impl Iterator<Item = &LabeledPolynomial<F>> {
         self.gs.values().flat_map(|gs| [&gs.g_a, &gs.g_b, &gs.g_c].into_iter())
-    }
-
-    /// Iterate over the polynomials output by the prover in the fourth round.
-    pub fn into_iter(self) -> impl Iterator<Item = LabeledPolynomial<F>> {
-        self.gs.into_values().flat_map(|gs| [gs.g_a, gs.g_b, gs.g_c].into_iter())
     }
 
     pub fn matches_info(&self, info: &BTreeMap<PolynomialLabel, PolynomialInfo>) -> bool {
@@ -159,11 +173,6 @@ impl<F: PrimeField> FifthOracles<F> {
     /// Iterate over the polynomials output by the prover in the previous round.
     pub fn iter(&self) -> impl Iterator<Item = &LabeledPolynomial<F>> {
         [&self.h_2].into_iter()
-    }
-
-    /// Iterate over the polynomials output by the prover in the previous round.
-    pub fn into_iter(self) -> impl Iterator<Item = LabeledPolynomial<F>> {
-        [self.h_2].into_iter()
     }
 
     pub fn matches_info(&self, info: &BTreeMap<PolynomialLabel, PolynomialInfo>) -> bool {

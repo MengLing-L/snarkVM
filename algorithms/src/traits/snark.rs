@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{r1cs::ConstraintSynthesizer, AlgebraicSponge};
-use snarkvm_fields::PrimeField;
+use crate::{errors::SNARKError, r1cs::ConstraintSynthesizer, AlgebraicSponge};
+use snarkvm_fields::{PrimeField, ToConstraintField};
 use snarkvm_utilities::{CanonicalDeserialize, CanonicalSerialize, FromBytes, ToBytes};
 
 use anyhow::Result;
@@ -49,12 +49,12 @@ pub trait SNARK {
     type UniversalVerifier;
 
     type VerifierInput: ?Sized;
-    type VerifyingKey: Clone + Send + Sync + ToBytes + FromBytes + Ord;
+    type VerifyingKey: Clone + Send + Sync + ToBytes + FromBytes + ToConstraintField<Self::BaseField> + Ord;
 
     type FiatShamirRng: AlgebraicSponge<Self::BaseField, 2, Parameters = Self::FSParameters>;
     type FSParameters;
 
-    fn universal_setup(config: usize) -> Result<Self::UniversalSRS>;
+    fn universal_setup(config: usize) -> Result<Self::UniversalSRS, SNARKError>;
 
     fn circuit_setup<C: ConstraintSynthesizer<Self::ScalarField>>(
         srs: &Self::UniversalSRS,
@@ -66,7 +66,7 @@ pub trait SNARK {
         fs_parameters: &Self::FSParameters,
         verifying_key: &Self::VerifyingKey,
         proving_key: &Self::ProvingKey,
-    ) -> Result<Self::Certificate>;
+    ) -> Result<Self::Certificate, SNARKError>;
 
     fn prove<C: ConstraintSynthesizer<Self::ScalarField>, R: Rng + CryptoRng>(
         universal_prover: &Self::UniversalProver,
@@ -74,7 +74,7 @@ pub trait SNARK {
         proving_key: &Self::ProvingKey,
         constraints: &C,
         rng: &mut R,
-    ) -> Result<Self::Proof> {
+    ) -> Result<Self::Proof, SNARKError> {
         let mut keys_to_constraints = BTreeMap::new();
         keys_to_constraints.insert(proving_key, std::slice::from_ref(constraints));
         Self::prove_batch(universal_prover, fs_parameters, &keys_to_constraints, rng)
@@ -85,7 +85,7 @@ pub trait SNARK {
         fs_parameters: &Self::FSParameters,
         keys_to_constraints: &BTreeMap<&Self::ProvingKey, &[C]>,
         rng: &mut R,
-    ) -> Result<Self::Proof>;
+    ) -> Result<Self::Proof, SNARKError>;
 
     fn verify_vk<C: ConstraintSynthesizer<Self::ScalarField>>(
         universal_verifier: &Self::UniversalVerifier,
@@ -93,7 +93,7 @@ pub trait SNARK {
         circuit: &C,
         verifying_key: &Self::VerifyingKey,
         certificate: &Self::Certificate,
-    ) -> Result<bool>;
+    ) -> Result<bool, SNARKError>;
 
     fn verify<B: Borrow<Self::VerifierInput>>(
         universal_verifier: &Self::UniversalVerifier,
@@ -101,7 +101,7 @@ pub trait SNARK {
         verifying_key: &Self::VerifyingKey,
         input: B,
         proof: &Self::Proof,
-    ) -> Result<bool> {
+    ) -> Result<bool, SNARKError> {
         let mut keys_to_inputs = BTreeMap::new();
         let inputs = [input];
         keys_to_inputs.insert(verifying_key, &inputs[..]);
@@ -113,5 +113,5 @@ pub trait SNARK {
         fs_parameters: &Self::FSParameters,
         keys_to_inputs: &BTreeMap<&Self::VerifyingKey, &[B]>,
         proof: &Self::Proof,
-    ) -> Result<bool>;
+    ) -> Result<bool, SNARKError>;
 }

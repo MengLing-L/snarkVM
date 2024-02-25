@@ -32,8 +32,6 @@ impl<N: Network, A: circuit::Aleo<Network = N>> RegistersLoad<N> for Registers<N
             Operand::ProgramID(program_id) => {
                 return Ok(Value::Plaintext(Plaintext::from(Literal::Address(program_id.to_address()?))));
             }
-            // If the operand is the signer, load the value of the signer.
-            Operand::Signer => return Ok(Value::Plaintext(Plaintext::from(Literal::Address(self.signer()?)))),
             // If the operand is the caller, load the value of the caller.
             Operand::Caller => return Ok(Value::Plaintext(Plaintext::from(Literal::Address(self.caller()?)))),
             // If the operand is the block height, throw an error.
@@ -59,8 +57,6 @@ impl<N: Network, A: circuit::Aleo<Network = N>> RegistersLoad<N> for Registers<N
                             Value::Plaintext(plaintext)
                         }
                     },
-                    // Retrieve the argument from the future.
-                    Value::Future(future) => future.find(path)?,
                 }
             }
         };
@@ -107,12 +103,6 @@ impl<N: Network, A: circuit::Aleo<Network = N>> RegistersLoadCircuit<N, A> for R
                     Literal::Address(program_id.to_address()?),
                 ))));
             }
-            // If the operand is the signer, load the value of the signer.
-            Operand::Signer => {
-                return Ok(circuit::Value::Plaintext(circuit::Plaintext::from(circuit::Literal::Address(
-                    self.signer_circuit()?,
-                ))));
-            }
             // If the operand is the caller, load the value of the caller.
             Operand::Caller => {
                 return Ok(circuit::Value::Plaintext(circuit::Plaintext::from(circuit::Literal::Address(
@@ -145,8 +135,6 @@ impl<N: Network, A: circuit::Aleo<Network = N>> RegistersLoadCircuit<N, A> for R
                         | circuit::Entry::Public(plaintext)
                         | circuit::Entry::Private(plaintext) => circuit::Value::Plaintext(plaintext),
                     },
-                    // Retrieve the argument from the future.
-                    circuit::Value::Future(future) => future.find(&path)?,
                 }
             }
         };

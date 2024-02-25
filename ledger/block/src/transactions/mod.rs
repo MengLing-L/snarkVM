@@ -37,9 +37,6 @@ use console::{
     },
     types::{Field, Group, U64},
 };
-use ledger_committee::Committee;
-use ledger_narwhal_batch_header::BatchHeader;
-use ledger_narwhal_subdag::Subdag;
 use synthesizer_program::FinalizeOperation;
 
 use indexmap::IndexMap;
@@ -124,14 +121,6 @@ impl<N: Network> Transactions<N> {
 }
 
 impl<N: Network> Transactions<N> {
-    /// Returns the confirmed transaction for the given unconfirmed transaction ID, if it exists.
-    pub fn find_confirmed_transaction_for_unconfirmed_transaction_id(
-        &self,
-        unconfirmed_transaction_id: &N::TransactionID,
-    ) -> Option<&ConfirmedTransaction<N>> {
-        cfg_find!(self.transactions, unconfirmed_transaction_id, contains_unconfirmed_transaction_id)
-    }
-
     /// Returns the transaction with the given transition ID, if it exists.
     pub fn find_transaction_for_transition_id(&self, transition_id: &N::TransitionID) -> Option<&Transaction<N>> {
         cfg_find!(self.transactions, transition_id, contains_transition).map(|tx| tx.transaction())
@@ -169,10 +158,6 @@ impl<N: Network> Transactions<N> {
 }
 
 impl<N: Network> Transactions<N> {
-    /// The maximum number of aborted transactions allowed in a block.
-    pub const MAX_ABORTED_TRANSACTIONS: usize = Subdag::<N>::MAX_ROUNDS
-        * Committee::<N>::MAX_COMMITTEE_SIZE as usize
-        * BatchHeader::<N>::MAX_TRANSMISSIONS_PER_BATCH;
     /// The maximum number of transactions allowed in a block.
     pub const MAX_TRANSACTIONS: usize = usize::pow(2, TRANSACTIONS_DEPTH as u32);
 
@@ -183,7 +168,7 @@ impl<N: Network> Transactions<N> {
 
     /// Returns a parallel iterator over all transactions, for all transactions in `self`.
     #[cfg(not(feature = "serial"))]
-    pub fn par_iter(&self) -> impl '_ + IndexedParallelIterator<Item = &ConfirmedTransaction<N>> {
+    pub fn par_iter(&self) -> impl '_ + ParallelIterator<Item = &ConfirmedTransaction<N>> {
         self.transactions.par_values()
     }
 
@@ -264,7 +249,7 @@ impl<N: Network> Transactions<N> {
 
     /// Returns an iterator over the finalize operations, for all transactions.
     pub fn finalize_operations(&self) -> impl '_ + Iterator<Item = &FinalizeOperation<N>> {
-        self.iter().flat_map(|tx| tx.finalize_operations())
+        self.iter().flat_map(|tx| tx.finalize_operations()).flatten()
     }
 }
 
@@ -344,20 +329,5 @@ pub mod test_helpers {
     /// Samples a block transactions.
     pub(crate) fn sample_block_transactions(rng: &mut TestRng) -> Transactions<CurrentNetwork> {
         crate::test_helpers::sample_genesis_block(rng).transactions().clone()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    type CurrentNetwork = console::network::Testnet3;
-
-    #[test]
-    fn test_max_transactions() {
-        assert_eq!(
-            Transactions::<CurrentNetwork>::MAX_TRANSACTIONS,
-            ledger_narwhal_batch_header::BatchHeader::<CurrentNetwork>::MAX_TRANSACTIONS
-        );
     }
 }
