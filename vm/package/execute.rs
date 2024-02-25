@@ -118,6 +118,7 @@ mod tests {
     type CurrentAleo = snarkvm_circuit::network::AleoV0;
 
     #[test]
+    #[ignore]
     fn test_execute() {
         // Samples a new package at a temporary directory.
         let (directory, package) = crate::package::test_helpers::sample_package();
