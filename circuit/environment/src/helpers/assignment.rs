@@ -142,7 +142,7 @@ impl<F: PrimeField> Assignment<F> {
 
     /// Returns the number of constraints in the assignment.
     pub fn num_constraints(&self) -> u64 {
-        self.constraints.len() as u64
+        self.constraints.len() as u64  + self.num_lookup_constraints()
     }
 
     /// Returns the number of lookup constraints in the assignment.
