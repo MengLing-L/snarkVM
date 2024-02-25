@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::Index;
+use snarkvm_algorithms::r1cs::LookupTable;
 use snarkvm_fields::PrimeField;
 
 use indexmap::IndexMap;
@@ -81,6 +82,8 @@ pub struct Assignment<F: PrimeField> {
     public: IndexMap<Index, F>,
     private: IndexMap<Index, F>,
     constraints: Vec<(AssignmentLC<F>, AssignmentLC<F>, AssignmentLC<F>)>,
+    tables: Vec<LookupTable<F>>,
+    lookup_constraints: Vec<(AssignmentLC<F>, AssignmentLC<F>, AssignmentLC<F>, usize)>,
 }
 
 impl<F: PrimeField> From<crate::R1CS<F>> for Assignment<F> {
@@ -97,6 +100,11 @@ impl<F: PrimeField> From<crate::R1CS<F>> for Assignment<F> {
                 let (a, b, c) = constraint.to_terms();
                 (a.into(), b.into(), c.into())
             })),
+            lookup_constraints: FromIterator::from_iter(r1cs.to_lookup_constraints().iter().map(|constraint| {
+                let (a, b, c, d) = constraint.to_terms();
+                (a.into(), b.into(), c.into(), d)
+            })),
+            tables: r1cs.tables
         }
     }
 }
@@ -117,6 +125,11 @@ impl<F: PrimeField> Assignment<F> {
         &self.constraints
     }
 
+    /// Returns the lookup constraints of the assignment.
+    pub const fn lookup_constraints(&self) -> &Vec<(AssignmentLC<F>, AssignmentLC<F>, AssignmentLC<F>, usize)> {
+        &self.lookup_constraints
+    }
+
     /// Returns the number of public variables in the assignment.
     pub fn num_public(&self) -> u64 {
         self.public.len() as u64
@@ -132,12 +145,22 @@ impl<F: PrimeField> Assignment<F> {
         self.constraints.len() as u64
     }
 
+    /// Returns the number of lookup constraints in the assignment.
+    pub fn num_lookup_constraints(&self) -> u64 {
+        self.lookup_constraints.len() as u64
+    }
+
     /// Returns the number of nonzeros in the assignment.
     pub fn num_nonzeros(&self) -> (u64, u64, u64) {
-        self.constraints
+        let (mut a_non, mut b_non, mut c_non) = self.constraints
             .iter()
             .map(|(a, b, c)| (a.num_nonzeros(), b.num_nonzeros(), c.num_nonzeros()))
-            .fold((0, 0, 0), |(a, b, c), (x, y, z)| (a.saturating_add(x), b.saturating_add(y), c.saturating_add(z)))
+            .fold((0u64, 0u64, 0u64), |(a, b, c), (x, y, z)| (a.saturating_add(x), b.saturating_add(y), c.saturating_add(z)));
+        self.lookup_constraints
+            .iter()
+            .map(|(a, b, c, d)| (a.num_nonzeros(), b.num_nonzeros(), c.num_nonzeros()))
+            .fold((a_non, b_non, c_non), |(a, b, c), (x, y, z)| (a.saturating_add(x), b.saturating_add(y), c.saturating_add(z)))
+
     }
 }
 
@@ -248,6 +271,23 @@ impl<F: PrimeField> snarkvm_algorithms::r1cs::ConstraintSynthesizer<F> for Assig
                 |lc| lc + convert_linear_combination(b),
                 |lc| lc + convert_linear_combination(c),
             );
+
+            // Add the lookup tables.
+            for table in &self.tables {
+                cs.add_lookup_table(table.clone())
+            }
+
+            // Enforce all of the lookup constraints.
+            for (i, constraint) in self.lookup_constraints.iter().enumerate() {
+                let (a, b, c, table_index) = constraint;
+                cs.enforce_lookup(
+                    || format!("Lookup Constraint {i}"),
+                    |lc| lc + convert_linear_combination(a),
+                    |lc| lc + convert_linear_combination(b),
+                    |lc| lc + convert_linear_combination(c),
+                    *table_index,
+                )?;
+            }
         }
 
         // Ensure the given `cs` matches in size with the first system.
