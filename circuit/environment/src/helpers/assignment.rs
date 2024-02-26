@@ -38,7 +38,7 @@ impl<F: PrimeField> From<&crate::Variable<F>> for AssignmentVariable<F> {
 
 #[derive(Clone, Debug)]
 pub struct AssignmentLC<F: PrimeField> {
-    constant: F,
+    pub constant: F,
     pub terms: IndexMap<AssignmentVariable<F>, F>,
 }
 
